@@ -1,0 +1,39 @@
+# ワークフローの名前
+name: Create Release and Upload Firmware
+
+# 実行されるタイミング: vから始まるタグ (例: v1.0, v1.2.3) がプッシュされた時
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-release:
+    # Ubuntuの最新版で実行
+    runs-on: ubuntu-latest
+    steps:
+      # 1. ソースコードをチェックアウト
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # 2. Pythonをセットアップ (PlatformIOに必要)
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      # 3. PlatformIOをインストール
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      # 4. プロジェクトをビルド (esp32devの部分はplatformio.iniの環境名に合わせる)
+      - name: Build PlatformIO Project
+        run: platformio run -e esp32dev
+
+      # 5. リリースを作成し、firmware.binをアップロード
+      - name: Create Release and Upload Firmware
+        uses: softprops/action-gh-release@v2
+        with:
+          # リリースに含めるファイル
+          # パスはplatformio.iniの環境名(esp32dev)に合わせてください
+          files: .pio/build/esp32dev/firmware.bin
