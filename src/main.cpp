@@ -10,7 +10,6 @@ WiFiManager wm;
 #define LED_BUILTIN 2
 
 // put function declarations here:
-int myFunction(int, int);
 
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
@@ -24,22 +23,15 @@ void setup() {
     ESP.restart();
   }
   //mdns
-  if (MDNS.begin("esp32")) {
+  if (MDNS.begin("studytimer")) {
     Serial.println("MDNS responder started");
   }
-  
+  //OTA
   ArduinoOTA.begin();
-
-
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
 	ArduinoOTA.handle(); // OTAのハンドリング
 	delay(100);
-}
-
-// put function definitions here:
-int myFunction(int x, int y) {
-  return x + y;
 }
