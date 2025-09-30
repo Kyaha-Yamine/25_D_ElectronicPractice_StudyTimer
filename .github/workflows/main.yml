@@ -11,6 +11,8 @@ jobs:
   build-and-release:
     # Ubuntuの最新版で実行
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       # 1. ソースコードをチェックアウト
       - name: Check out repository
