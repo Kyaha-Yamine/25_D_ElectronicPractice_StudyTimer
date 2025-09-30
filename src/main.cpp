@@ -7,12 +7,12 @@
 
 WiFiManager wm;
 
-#define LED_BUILTIN 2
+#define LED_1 2
 
 // put function declarations here:
 
 void setup() {
-  pinMode(LED_BUILTIN, OUTPUT);
+  pinMode(LED_1, OUTPUT);
   // put your setup code here, to run once:
   Serial.begin(115200);
   // Wifi接続 繋がらない場合は設定モードに移行
