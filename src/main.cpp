@@ -11,11 +11,16 @@
 #include <SPI.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_ILI9341.h>
+#include <U8g2_for_Adafruit_GFX.h>
+#include <qrcode.h>
 
 #define TFT_RST 16
 #define TFT_CS 5
 #define TFT_DC 17
 Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC,TFT_RST);
+U8G2_FOR_ADAFRUIT_GFX u8g2;
+
+QRCode qrcode;
 // PinAssign SDO=19,SCK=18,SDI=23,DC=17,RST=16,CS=5
 
 // 現在のファームウェアバージョン
@@ -33,23 +38,120 @@ WiFiManager wm;
 Ticker ledTicker;
 WiFiServer server(80);
 
-void blinkLed() {
-  digitalWrite(LED_1, !digitalRead(LED_1)); // LEDの状態を反転
-}
-
 void setuptft(){
   tft.begin();
+  u8g2.begin(tft);
   tft.setRotation(3);
-  tft.fillScreen(ILI9341_WHITE);
+  tft.fillScreen(ILI9341_BLACK);
   tft.setCursor(0, 0);
-  tft.setTextColor(ILI9341_BLACK);
+  tft.setTextColor(ILI9341_WHITE);
+  tft.setTextSize(2);
+  tft.print("Study Timer");
 }
 
+
+void displayQRCodeHelper(String text, int x, int y, int moduleSize = 4) {
+    // QRコードのデータを生成 (バージョン3, 低エラー訂正)
+    // バッファサイズは qrcode_getBufferSize(3) を使用
+    byte qrcodeData[qrcode_getBufferSize(3)];
+    qrcode_initText(&qrcode, qrcodeData, 3, ECC_LOW, text.c_str());
+
+    int qrSize = qrcode.size; // QRコードのサイズ (バージョン3なら 29x29)
+    int margin = moduleSize;  // QRコードの周囲の余白 (ピクセル)
+
+    // 背景を白で描画 (余白込み)
+    tft.fillRect(x - margin, y - margin, 
+                 qrSize * moduleSize + margin * 2, 
+                 qrSize * moduleSize + margin * 2, 
+                 ILI9341_WHITE);
+
+    // QRコードのモジュールを一つずつ描画
+    for (int yModule = 0; yModule < qrSize; yModule++) {
+        for (int xModule = 0; xModule < qrSize; xModule++) {
+            if (qrcode_getModule(&qrcode, xModule, yModule)) {
+                // 黒いモジュール
+                tft.fillRect(x + xModule * moduleSize, y + yModule * moduleSize, 
+                             moduleSize, moduleSize, 
+                             ILI9341_BLACK);
+            }
+            // (白いモジュールは背景色で描画済みなのでスキップ)
+        }
+    }
+}
+void configModeCallback (WiFiManager *myWiFiManager) {
+  String apSSID = myWiFiManager->getConfigPortalSSID();
+  Serial.println("Entered config mode");
+  Serial.print("Connect to AP: ");
+  Serial.println(apSSID);
+  Serial.print("IP address: ");
+  Serial.println(WiFi.softAPIP());
+
+  // TFTディスプレイに案内を表示
+  tft.fillScreen(ILI9341_BLACK); 
+  u8g2.setFontMode(1); // 透過モード
+  u8g2.setFont(u8g2_font_unifont_t_japanese1); // 日本語フォント
+
+  // --- テキスト描画 (日本語化) ---
+
+  // タイトル
+  u8g2.setForegroundColor(ILI9341_YELLOW);
+  u8g2.setCursor(10, 25); // Y座標はフォントのベースライン
+  u8g2.print(F("Wi-Fi設定モード")); 
+
+  // 1. APに接続
+  u8g2.setForegroundColor(ILI9341_WHITE);
+  u8g2.setCursor(10, 70); 
+  u8g2.print(F("1. APに接続"));
+
+  // AP SSID
+  u8g2.setForegroundColor(ILI9341_CYAN);
+  u8g2.setCursor(10, 95);
+  u8g2.print(apSSID); 
+
+  // 2. ブラウザを開く
+  u8g2.setForegroundColor(ILI9341_WHITE);
+  u8g2.setCursor(10, 140);
+  u8g2.print(F("2. ブラウザを開く"));
+
+  // IPアドレス
+  u8g2.setForegroundColor(ILI9341_GREEN);
+  u8g2.setCursor(10, 165);
+  u8g2.print(F("192.168.4.1"));
+  
+  // QRスキャン
+  u8g2.setForegroundColor(ILI9341_WHITE);
+  u8g2.setCursor(10, 210);
+  u8g2.print(F("QRスキャン ->"));
+
+  // --- 右側にQRコードを表示 ---
+
+  // QRコード用の文字列 (Wi-Fi簡単接続形式)
+  // "WIFI:S:<SSID>;T:<WPA|WEP|nopass>;P:<PASSWORD>;;"
+  // WiFiManagerのAPはデフォルトでパスワード無し
+  String qrText = "WIFI:S:" + apSSID + ";T:nopass;P:;;";
+
+  // 描画設定
+  int moduleSize = 3; // 1モジュールのサイズ (5x5ピクセル)
+  // バージョン3 (29x29モジュール) の場合: 29 * 5 = 145 ピクセル幅
+  
+  // X座標: 320 (画面幅) - 145 (QR幅) - 10 (右マージン) = 165
+  int x = 223; 
+  // Y座標: (240 (画面高さ) - 145 (QR幅)) / 2 (上下中央) = 47
+  int y = 143; 
+  
+  // QRコード描画関数を呼び出し
+  displayQRCodeHelper(qrText, x, y, moduleSize); 
+}
+void blinkLed() {
+  digitalWrite(LED_1, !digitalRead(LED_1));
+}
 void setupwifi(){
-  ledTicker.attach(0.5, blinkLed);
-  tft.printf("Wi-Fi Connecting...");
+  wm.setAPCallback(configModeCallback);
+
+  //ledTicker.attach(0.5, blinkLed);
+  tft.println("Wi-Fi Connecting...");
   if(wm.autoConnect()){
-    tft.printf("Connected");
+    tft.println("Connected");
     Serial.println("connected");
     // Wi-Fi接続完了後、点滅を停止してLEDを消灯
     ledTicker.detach();
@@ -57,7 +159,7 @@ void setupwifi(){
     //checkForUpdates(); // アップデートをチェック
   }else{
     Serial.println("failed to connect");
-    tft.printf("failed to connect");
+    tft.print("failed to connect");
     // タイムアウトまたは失敗後、点滅を停止
     ledTicker.detach();
     digitalWrite(LED_1, LOW);
@@ -73,69 +175,6 @@ void setupwifi(){
   
   server.begin();
 }
-
-void setup() {
-  Serial.begin(115200);
-  pinMode(LED_1, OUTPUT);
-  setuptft;
-  setupwifi;
-}
-int value = 0;
-void loop() {
-  // put your main code here, to run repeatedly:
-	ArduinoOTA.handle(); // OTAのハンドリング
-
-  WiFiClient client = server.available();   // listen for incoming clients
-
-  if (client) {                             // if you get a client,
-    Serial.println("New Client.");           // print a message out the serial port
-    String currentLine = "";                // make a String to hold incoming data from the client
-    while (client.connected()) {            // loop while the client's connected
-      if (client.available()) {             // if there's bytes to read from the client,
-        char c = client.read();             // read a byte, then
-        Serial.write(c);                    // print it out the serial monitor
-        if (c == '\n') {                    // if the byte is a newline character
-
-          // if the current line is blank, you got two newline characters in a row.
-          // that's the end of the client HTTP request, so send a response:
-          if (currentLine.length() == 0) {
-            // HTTP headers always start with a response code (e.g. HTTP/1.1 200 OK)
-            // and a content-type so the client knows what's coming, then a blank line:
-            client.println("HTTP/1.1 200 OK");
-            client.println("Content-type:text/html");
-            client.println();
-
-            // the content of the HTTP response follows the header:
-            client.print("Click <a href=\"/H\">here</a> to turn the LED on pin 5 on.<br>");
-            client.print("Click <a href=\"/L\">here</a> to turn the LED on pin 5 off.<br>");
-
-            // The HTTP response ends with another blank line:
-            client.println();
-            // break out of the while loop:
-            break;
-          } else {    // if you got a newline, then clear currentLine:
-            currentLine = "";
-          }
-        } else if (c != '\r') {  // if you got anything else but a carriage return character,
-          currentLine += c;      // add it to the end of the currentLine
-        }
-
-        // Check to see if the client request was "GET /H" or "GET /L":
-        if (currentLine.endsWith("GET /H")) {
-          digitalWrite(2, HIGH);               // GET /H turns the LED on
-        }
-        if (currentLine.endsWith("GET /L")) {
-          digitalWrite(2, LOW);                // GET /L turns the LED off
-        }
-      }
-    }
-    // close the connection:
-    client.stop();
-    Serial.println("Client Disconnected.");
-  }
-
-}
-
 void checkForUpdates() {
   String url = "https://api.github.com/repos/" + String(GITHUB_USER) + "/" + String(GITHUB_REPO) + "/releases/latest";
 
@@ -212,4 +251,22 @@ void checkForUpdates() {
     Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
   }
   http.end();
+}
+
+void setup() 
+{
+  wm.resetSettings();
+
+  Serial.begin(115200);
+  pinMode(LED_1, OUTPUT);
+
+  setuptft();
+  setupwifi();
+  //checkForUpdates();
+}
+int value = 0;
+
+void loop() {
+  // put your main code here, to run repeatedly:
+	//ArduinoOTA.handle(); // OTAのハンドリング
 }
