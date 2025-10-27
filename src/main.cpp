@@ -8,14 +8,23 @@
 #include <HTTPUpdate.h>
 #include <ArduinoJson.h>
 #include <Ticker.h>
+#include <SPI.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_ILI9341.h>
+
+#define TFT_RST 16
+#define TFT_CS 5
+#define TFT_DC 17
+Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC,TFT_RST);
+// PinAssign SDO=19,SCK=18,SDI=23,DC=17,RST=16,CS=5
 
 // 現在のファームウェアバージョン
 #define FIRMWARE_VERSION "v1.0.0"
 
 // --- 設定項目 ---
-// GitHubリポジトリの情報 (必ずご自身の情報に書き換えてください)
 #define GITHUB_USER "your_github_username" // GitHubのユーザー名
 #define GITHUB_REPO "your_github_repo"     // GitHubのリポジトリ名
+
 
 WiFiManager wm;
 
@@ -28,18 +37,19 @@ void blinkLed() {
   digitalWrite(LED_1, !digitalRead(LED_1)); // LEDの状態を反転
 }
 
-// put function declarations here:
-void checkForUpdates();
+void setuptft(){
+  tft.begin();
+  tft.setRotation(3);
+  tft.fillScreen(ILI9341_WHITE);
+  tft.setCursor(0, 0);
+  tft.setTextColor(ILI9341_BLACK);
+}
 
-void setup() {
-  pinMode(LED_1, OUTPUT);
-  // put your setup code here, to run once:
-  Serial.begin(115200);
-  // Wi-Fi接続待機中にLEDを点滅させる
+void setupwifi(){
   ledTicker.attach(0.5, blinkLed);
-
-  // Wifi接続 繋がらない場合は設定モードに移行
+  tft.printf("Wi-Fi Connecting...");
   if(wm.autoConnect()){
+    tft.printf("Connected");
     Serial.println("connected");
     // Wi-Fi接続完了後、点滅を停止してLEDを消灯
     ledTicker.detach();
@@ -47,6 +57,7 @@ void setup() {
     //checkForUpdates(); // アップデートをチェック
   }else{
     Serial.println("failed to connect");
+    tft.printf("failed to connect");
     // タイムアウトまたは失敗後、点滅を停止
     ledTicker.detach();
     digitalWrite(LED_1, LOW);
@@ -61,6 +72,13 @@ void setup() {
   Serial.println(WiFi.localIP());
   
   server.begin();
+}
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(LED_1, OUTPUT);
+  setuptft;
+  setupwifi;
 }
 int value = 0;
 void loop() {
