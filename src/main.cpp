@@ -13,10 +13,18 @@
 #include <Adafruit_ILI9341.h>
 #include <U8g2_for_Adafruit_GFX.h>
 #include <qrcode.h>
+#include <time.h>
+#include <uTimerLib.h>
 
 #define TFT_RST 16
 #define TFT_CS 5
 #define TFT_DC 17
+#define disp_def_txt_color ILI9341_WHITE
+#define disp_def_bg_color ILI9341_BLACK
+#define button 34
+
+
+
 Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC,TFT_RST);
 U8G2_FOR_ADAFRUIT_GFX u8g2;
 
@@ -37,18 +45,111 @@ WiFiManager wm;
 
 Ticker ledTicker;
 WiFiServer server(80);
+/*
+int getButtonState(){
+  int press_times = 0;
+  int last_buttonState = 0;
+  int current_buttonState = 0;
+  unsigned long debounce_ms = 50;
+  unsigned long timeoout_ms = 300;
+  unsigned long longpress_ms =1000;
+  unsigned long last_release_time = 0;
+  unsigned long press_start_time = 0;
+  unsigned long last_debounce_time = 0;
+  bool long_press_fired = false;
 
-void setuptft(){
-  tft.begin();
-  u8g2.begin(tft);
-  tft.setRotation(3);
-  tft.fillScreen(ILI9341_BLACK);
-  tft.setCursor(0, 0);
-  tft.setTextColor(ILI9341_WHITE);
-  tft.setTextSize(2);
-  tft.print("Study Timer");
+  unsigned long firstTime = millis();
+  while(millis() - firstTime < timeoout_ms){
+  if(digitalRead(button)==LOW){
+    current_buttonState = 1;
+  }else{
+    current_buttonState = 0;
+  }
+
+  if(current_buttonState != last_buttonState){
+    last_debounce_time = millis();
+  }
+  if((millis() - last_debounce_time) > debounce_ms){
+    if(current_buttonState != last_buttonState){
+      last_buttonState = current_buttonState;
+      if(last_buttonState == 1){
+        press_start_time = millis();
+        long_press_fired = false;
+      }else{
+        unsigned long press_duration = millis() - press_start_time;
+        if(press_duration >= longpress_ms){
+          if(!long_press_fired){
+            press_times =0;
+            long_press_fired = true;
+            return (10);
+          }
+        }else{
+          press_times++;
+          last_release_time = millis();
+          if(press_times == 3){
+            return(3);
+          }
+        }
+      }
+    }
+  }
+}
+  return(press_times);
+
+}*/
+
+void getntpTime(){
+  configTime(9 * 3600, 0, "ntp.nict.jp", "time.google.com", "ntp.jst.mfeed.ad.jp");
 }
 
+String twoDigit(int number) {
+  if (number < 10) {
+    return "0" + String(number);
+  }
+  return String(number);
+}
+
+String datetext_showing;
+void disp_showDateTime(){
+
+  struct tm timeinfo;  
+  if(!getLocalTime(&timeinfo)){
+    datetext_showing = "";
+    return;
+  }
+  String datetext = String(twoDigit(timeinfo.tm_mon + 1)) + "/" + String(twoDigit(timeinfo.tm_mday)) + " " + String(twoDigit(timeinfo.tm_hour)) + ":" + String(twoDigit(timeinfo.tm_min));
+  if(datetext != datetext_showing){
+  tft.fillRect(230,0,90,15,disp_def_bg_color);
+  u8g2.setCursor(230, 15);
+  u8g2.setForegroundColor(disp_def_txt_color);
+  tft.setTextColor(disp_def_txt_color);
+  u8g2.print(datetext);
+  datetext_showing = datetext;
+  }
+}
+
+void disp_showTitle(String title ,int color = disp_def_txt_color){
+  tft.fillRect(0,0,229,19,disp_def_bg_color); 
+  u8g2.setCursor(0, 15);
+  u8g2.setForegroundColor(color);
+  tft.setTextColor(color);
+  tft.drawLine(0,20,320,20,color);
+  u8g2.print(title);
+}
+
+void disp_showfooter(String text, int color = disp_def_txt_color){
+  tft.fillRect(0,226,320,84,disp_def_bg_color); 
+  u8g2.setCursor(0, 240);
+  u8g2.setForegroundColor(color);
+  tft.setTextColor(color);
+  tft.drawLine(0,225,320,225,color);
+  u8g2.print(text);
+
+}
+
+void disp_clearMainScreen(){
+  tft.fillRect(0,21,320,203,disp_def_bg_color);
+}
 
 void displayQRCodeHelper(String text, int x, int y, int moduleSize = 4) {
     // QRコードのデータを生成 (バージョン3, 低エラー訂正)
@@ -78,6 +179,20 @@ void displayQRCodeHelper(String text, int x, int y, int moduleSize = 4) {
         }
     }
 }
+
+void setuptft(){
+  tft.begin();
+  u8g2.begin(tft);
+  tft.setRotation(3);
+  tft.fillScreen(disp_def_bg_color);
+  u8g2.setCursor(0, 10);
+  tft.setTextColor(disp_def_txt_color);
+  u8g2.setFontMode(1); // 透過モード
+  u8g2.setFont(u8g2_font_unifont_t_japanese1); // 日本語フォント
+  disp_showTitle("StudyTimer");
+  disp_showfooter(FIRMWARE_VERSION);
+}
+
 void configModeCallback (WiFiManager *myWiFiManager) {
   String apSSID = myWiFiManager->getConfigPortalSSID();
   Serial.println("Entered config mode");
@@ -87,35 +202,27 @@ void configModeCallback (WiFiManager *myWiFiManager) {
   Serial.println(WiFi.softAPIP());
 
   // TFTディスプレイに案内を表示
-  tft.fillScreen(ILI9341_BLACK); 
-  u8g2.setFontMode(1); // 透過モード
-  u8g2.setFont(u8g2_font_unifont_t_japanese1); // 日本語フォント
-
-  // --- テキスト描画 (日本語化) ---
-
-  // タイトル
-  u8g2.setForegroundColor(ILI9341_YELLOW);
-  u8g2.setCursor(10, 25); // Y座標はフォントのベースライン
-  u8g2.print(F("Wi-Fi設定モード")); 
+  disp_clearMainScreen();
+  disp_showTitle("Wi-Fi接続設定");
 
   // 1. APに接続
-  u8g2.setForegroundColor(ILI9341_WHITE);
-  u8g2.setCursor(10, 70); 
+  u8g2.setForegroundColor(disp_def_txt_color);
+  u8g2.setCursor(10, 35); 
   u8g2.print(F("1. APに接続"));
 
   // AP SSID
   u8g2.setForegroundColor(ILI9341_CYAN);
-  u8g2.setCursor(10, 95);
+  u8g2.setCursor(10, 50);
   u8g2.print(apSSID); 
 
   // 2. ブラウザを開く
   u8g2.setForegroundColor(ILI9341_WHITE);
-  u8g2.setCursor(10, 140);
+  u8g2.setCursor(10, 75);
   u8g2.print(F("2. ブラウザを開く"));
 
   // IPアドレス
   u8g2.setForegroundColor(ILI9341_GREEN);
-  u8g2.setCursor(10, 165);
+  u8g2.setCursor(10, 90);
   u8g2.print(F("192.168.4.1"));
   
   // QRスキャン
@@ -137,7 +244,7 @@ void configModeCallback (WiFiManager *myWiFiManager) {
   // X座標: 320 (画面幅) - 145 (QR幅) - 10 (右マージン) = 165
   int x = 223; 
   // Y座標: (240 (画面高さ) - 145 (QR幅)) / 2 (上下中央) = 47
-  int y = 143; 
+  int y = 133; 
   
   // QRコード描画関数を呼び出し
   displayQRCodeHelper(qrText, x, y, moduleSize); 
@@ -149,9 +256,7 @@ void setupwifi(){
   wm.setAPCallback(configModeCallback);
 
   //ledTicker.attach(0.5, blinkLed);
-  tft.println("Wi-Fi Connecting...");
   if(wm.autoConnect()){
-    tft.println("Connected");
     Serial.println("connected");
     // Wi-Fi接続完了後、点滅を停止してLEDを消灯
     ledTicker.detach();
@@ -159,7 +264,6 @@ void setupwifi(){
     //checkForUpdates(); // アップデートをチェック
   }else{
     Serial.println("failed to connect");
-    tft.print("failed to connect");
     // タイムアウトまたは失敗後、点滅を停止
     ledTicker.detach();
     digitalWrite(LED_1, LOW);
@@ -170,11 +274,81 @@ void setupwifi(){
     Serial.println("MDNS responder started");
   }
   //OTA
+    ArduinoOTA
+    .onStart([]() {
+      disp_clearMainScreen();
+      String type;
+      if (ArduinoOTA.getCommand() == U_FLASH)
+        type = "sketch";
+      else // U_SPIFFS
+        type = "filesystem";
+      disp_showfooter(type);
+      // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
+      Serial.println("Start updating " + type);
+      disp_showTitle("OTA Update "+ type);
+    })
+    .onEnd([]() {
+      Serial.println("\nEnd");
+      disp_showfooter("End");
+    })
+    .onProgress([](unsigned int progress, unsigned int total) {
+      Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+      disp_showfooter(String((progress / (total / 100))) + "%");
+    })
+    .onError([](ota_error_t error) {
+      String msg;
+      Serial.printf("Error[%u]: ", error);
+      if (error == OTA_AUTH_ERROR) msg="Auth Failed";
+      else if (error == OTA_BEGIN_ERROR) msg="Begin Failed";
+      else if (error == OTA_CONNECT_ERROR) msg="Connect Failed";
+      else if (error == OTA_RECEIVE_ERROR) msg="Receive Failed";
+      else if (error == OTA_END_ERROR) msg="End Failed";
+      else msg="Unknown Error";
+      Serial.println(msg);
+      disp_showfooter("Error[%u]: "+msg);      
+    });
   ArduinoOTA.begin();
+
+
   Serial.println(WiFi.localIP());
-  
   server.begin();
 }
+
+void timer_stopwatch(){
+  disp_clearMainScreen();
+  unsigned long startTime;
+  unsigned long elapsedTime;
+  bool is_count = false;
+  String time_showing = "0";
+  String time_now;
+  disp_showTitle("Timer");
+  while (1){
+    if(is_count==false){
+      if(digitalRead(button) == LOW){
+        is_count = true;
+        startTime = millis();
+        delay(500);
+      }
+    }else{
+        elapsedTime = millis() - startTime;
+        time_now = String(elapsedTime/1000);
+
+        if(time_showing != time_now){
+        disp_showfooter(time_now);
+        time_showing = time_now;
+        }
+        Serial.println(elapsedTime);
+        if(digitalRead(button) == LOW)
+        {
+        is_count = false;
+        delay(500);
+        }
+    }
+  }
+}
+  
+
+
 void checkForUpdates() {
   String url = "https://api.github.com/repos/" + String(GITHUB_USER) + "/" + String(GITHUB_REPO) + "/releases/latest";
 
@@ -255,18 +429,24 @@ void checkForUpdates() {
 
 void setup() 
 {
-  wm.resetSettings();
-
-  Serial.begin(115200);
   pinMode(LED_1, OUTPUT);
-
+  pinMode(button, INPUT);
   setuptft();
+  TimerLib.setInterval_us(disp_showDateTime, 1000000);
+  //wm.resetSettings();
+  Serial.begin(115200);
   setupwifi();
+  getntpTime();
+  disp_clearMainScreen();
+  disp_showTitle("StudyTimer");
+  disp_showfooter(FIRMWARE_VERSION);
   //checkForUpdates();
 }
 int value = 0;
 
 void loop() {
   // put your main code here, to run repeatedly:
-	//ArduinoOTA.handle(); // OTAのハンドリング
+	ArduinoOTA.handle(); // OTAのハンドリング
+  timer_stopwatch();
 }
+
