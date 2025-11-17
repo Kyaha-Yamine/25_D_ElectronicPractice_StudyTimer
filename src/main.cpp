@@ -37,6 +37,7 @@ QRCode qrcode;
 // --- 設定項目 ---
 #define GITHUB_USER "your_github_username" // GitHubのユーザー名
 #define GITHUB_REPO "your_github_repo"     // GitHubのリポジトリ名
+#define GAS_URL "https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec" // Google Apps ScriptのURL
 
 
 WiFiManager wm;
@@ -45,58 +46,8 @@ WiFiManager wm;
 
 Ticker ledTicker;
 WiFiServer server(80);
-/*
-int getButtonState(){
-  int press_times = 0;
-  int last_buttonState = 0;
-  int current_buttonState = 0;
-  unsigned long debounce_ms = 50;
-  unsigned long timeoout_ms = 300;
-  unsigned long longpress_ms =1000;
-  unsigned long last_release_time = 0;
-  unsigned long press_start_time = 0;
-  unsigned long last_debounce_time = 0;
-  bool long_press_fired = false;
 
-  unsigned long firstTime = millis();
-  while(millis() - firstTime < timeoout_ms){
-  if(digitalRead(button)==LOW){
-    current_buttonState = 1;
-  }else{
-    current_buttonState = 0;
-  }
 
-  if(current_buttonState != last_buttonState){
-    last_debounce_time = millis();
-  }
-  if((millis() - last_debounce_time) > debounce_ms){
-    if(current_buttonState != last_buttonState){
-      last_buttonState = current_buttonState;
-      if(last_buttonState == 1){
-        press_start_time = millis();
-        long_press_fired = false;
-      }else{
-        unsigned long press_duration = millis() - press_start_time;
-        if(press_duration >= longpress_ms){
-          if(!long_press_fired){
-            press_times =0;
-            long_press_fired = true;
-            return (10);
-          }
-        }else{
-          press_times++;
-          last_release_time = millis();
-          if(press_times == 3){
-            return(3);
-          }
-        }
-      }
-    }
-  }
-}
-  return(press_times);
-
-}*/
 
 void getntpTime(){
   configTime(9 * 3600, 0, "ntp.nict.jp", "time.google.com", "ntp.jst.mfeed.ad.jp");
@@ -111,7 +62,7 @@ String twoDigit(int number) {
 
 String datetext_showing;
 void disp_showDateTime(){
-
+  ArduinoOTA.handle(); // OTAのハンドリング
   struct tm timeinfo;  
   if(!getLocalTime(&timeinfo)){
     datetext_showing = "";
@@ -128,7 +79,19 @@ void disp_showDateTime(){
   }
 }
 
+String s_to_hms(int s){
+  int h = s / 3600;
+  int m = (s % 3600) / 60;
+  int sec = s % 60;
+  return String(h) + ":" + String(twoDigit(m)) + ":" + String(twoDigit(sec));
+}
+
+String titletext_showing;
 void disp_showTitle(String title ,int color = disp_def_txt_color){
+  if(titletext_showing == title){
+    return;
+  }
+  titletext_showing = title;
   tft.fillRect(0,0,229,19,disp_def_bg_color); 
   u8g2.setCursor(0, 15);
   u8g2.setForegroundColor(color);
@@ -137,18 +100,23 @@ void disp_showTitle(String title ,int color = disp_def_txt_color){
   u8g2.print(title);
 }
 
+String footertext_showing;
 void disp_showfooter(String text, int color = disp_def_txt_color){
-  tft.fillRect(0,226,320,84,disp_def_bg_color); 
-  u8g2.setCursor(0, 240);
+  if(footertext_showing == text){
+    return;
+  }
+  footertext_showing = text;
+  tft.fillRect(0,224,320,86,disp_def_bg_color); 
+  u8g2.setCursor(0, 238);
   u8g2.setForegroundColor(color);
   tft.setTextColor(color);
-  tft.drawLine(0,225,320,225,color);
+  tft.drawLine(0,223,320,223,color);
   u8g2.print(text);
 
 }
 
 void disp_clearMainScreen(){
-  tft.fillRect(0,21,320,203,disp_def_bg_color);
+  tft.fillRect(0,21,320,201,disp_def_bg_color);
 }
 
 void displayQRCodeHelper(String text, int x, int y, int moduleSize = 4) {
@@ -194,6 +162,7 @@ void setuptft(){
 }
 
 void configModeCallback (WiFiManager *myWiFiManager) {
+  disp_showfooter("");
   String apSSID = myWiFiManager->getConfigPortalSSID();
   Serial.println("Entered config mode");
   Serial.print("Connect to AP: ");
@@ -253,17 +222,20 @@ void blinkLed() {
   digitalWrite(LED_1, !digitalRead(LED_1));
 }
 void setupwifi(){
+  disp_showfooter("Connecting Wi-Fi...");
   wm.setAPCallback(configModeCallback);
 
   //ledTicker.attach(0.5, blinkLed);
   if(wm.autoConnect()){
-    Serial.println("connected");
+    Serial.println("Wi-Fi connected!");
+    disp_showfooter("Wi-Fi connected!");
     // Wi-Fi接続完了後、点滅を停止してLEDを消灯
     ledTicker.detach();
     digitalWrite(LED_1, LOW);
     //checkForUpdates(); // アップデートをチェック
   }else{
     Serial.println("failed to connect");
+    disp_showfooter("failed to connect");
     // タイムアウトまたは失敗後、点滅を停止
     ledTicker.detach();
     digitalWrite(LED_1, LOW);
@@ -272,6 +244,7 @@ void setupwifi(){
   //mdns
   if (MDNS.begin("studytimer")) {
     Serial.println("MDNS responder started");
+    disp_showfooter("MDNS responder started");
   }
   //OTA
     ArduinoOTA
@@ -293,7 +266,7 @@ void setupwifi(){
     })
     .onProgress([](unsigned int progress, unsigned int total) {
       Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-      disp_showfooter(String((progress / (total / 100))) + "%");
+      disp_showfooter(String("Progress:" + (progress / (total / 100))) + "%");
     })
     .onError([](ota_error_t error) {
       String msg;
@@ -305,50 +278,176 @@ void setupwifi(){
       else if (error == OTA_END_ERROR) msg="End Failed";
       else msg="Unknown Error";
       Serial.println(msg);
-      disp_showfooter("Error[%u]: "+msg);      
+      disp_showfooter("Error[%u]: "+msg, ILI9341_RED);
+      delay(1000);
+      
     });
   ArduinoOTA.begin();
 
 
   Serial.println(WiFi.localIP());
+  disp_showfooter(WiFi.localIP().toString());
   server.begin();
 }
 
-void timer_stopwatch(){
-  disp_clearMainScreen();
-  unsigned long startTime;
-  unsigned long elapsedTime;
-  bool is_count = false;
-  String time_showing = "0";
-  String time_now;
-  disp_showTitle("Timer");
-  while (1){
-    if(is_count==false){
-      if(digitalRead(button) == LOW){
-        is_count = true;
-        startTime = millis();
-        delay(500);
-      }
-    }else{
-        elapsedTime = millis() - startTime;
-        time_now = String(elapsedTime/1000);
+// 0: no press, 1: single, 2: double, 3: triple, 4: long press
+int checkButton() {
+    static int lastState = HIGH;
+    static int currentState = HIGH;
+    static unsigned long lastDebounceTime = 0;
+    static unsigned long pressTime = 0;
+    static unsigned long releaseTime = 0;
+    static int pressCount = 0;
+    static bool longPressSent = false;
 
-        if(time_showing != time_now){
-        disp_showfooter(time_now);
-        time_showing = time_now;
-        }
-        Serial.println(elapsedTime);
-        if(digitalRead(button) == LOW)
-        {
-        is_count = false;
-        delay(500);
+    int reading = digitalRead(button);
+    int result = 0; // 0 = no press
+
+    // Debounce
+    if (reading != lastState) {
+        lastDebounceTime = millis();
+    }
+
+    if ((millis() - lastDebounceTime) > 50) {
+        // If the button state has changed
+        if (reading != currentState) {
+            currentState = reading;
+
+            if (currentState == LOW) {
+                // Button was pressed
+                pressTime = millis();
+                longPressSent = false;
+            } else {
+                // Button was released
+                releaseTime = millis();
+                if (!longPressSent) {
+                    pressCount++;
+                }
+            }
         }
     }
+
+    lastState = reading;
+
+    // Check for long press
+    if (currentState == LOW && !longPressSent && (millis() - pressTime > 1000)) {
+        result = 4; // Long press
+        longPressSent = true;
+        pressCount = 0; // Reset counter on long press
+    }
+
+    // Check for multi-press
+    if (pressCount > 0 && (millis() - releaseTime > 300)) {
+        if (pressCount == 1) {
+            result = 1; // Single press
+        } else if (pressCount == 2) {
+            result = 2; // Double press
+        } else if (pressCount >= 3) {
+            result = 3; // Triple press
+        }
+        pressCount = 0;
+    }
+
+    return result;
+}
+
+void timer_stopwatch_ui(String time, String paused_time){
+  disp_clearMainScreen();
+  disp_showTitle("Timer");
+  tft.setTextSize(4);
+  tft.setTextColor(disp_def_txt_color);
+  int16_t x1, y1;
+  uint16_t w, h;
+  tft.getTextBounds(time, 0, 0, &x1, &y1, &w, &h);
+  tft.setCursor((320 - w) / 2, 50);
+  tft.print(time);
+
+  // 停止時間の描画
+  tft.setTextSize(2);
+  tft.setTextColor(ILI9341_YELLOW); // 色を黄色に変更
+  tft.getTextBounds(paused_time, 0, 0, &x1, &y1, &w, &h);
+  tft.setCursor((320 - w) / 2, 100); // Y座標を下に
+  tft.print(paused_time);
+}
+
+void timer_stopwatch(){
+  mode = "Stopwatch";
+  enum TimerState { STOPPED, RUNNING, PAUSED };
+  static TimerState timer_state = STOPPED;
+
+  static unsigned long startTime = 0;
+  static unsigned long pauseTime = 0;
+  static unsigned long totalPausedTime = 0;
+  static unsigned long elapsedTime = 0;
+
+  static String time_showing = "";
+  static String paused_time_showing = "";
+  static bool needs_display_update = true;
+  int button_press = checkButton();
+  if (button_press == 1) { // Single press
+    switch(timer_state) {
+      case STOPPED:
+        timer_state = RUNNING;
+        startTime = millis();
+        totalPausedTime = 0;
+        elapsedTime = 0;
+        pauseTime = 0;
+        break;
+      case RUNNING:
+        timer_state = PAUSED;
+        pauseTime = millis();
+        break;
+      case PAUSED:
+        timer_state = RUNNING;
+        totalPausedTime += (millis() - pauseTime);
+        pauseTime = 0;
+        break;
+    }
+    needs_display_update = true;
   }
+
+  if (button_press == 4) { // Long press for reset
+    if(timer_state == PAUSED){
+    //sendDataToSheet("stopwatch",elapsedTime, totalPausedTime);
+    timer_state = STOPPED;
+    startTime = 0;
+    pauseTime = 0;
+    totalPausedTime = 0;
+    elapsedTime = 0;
+    needs_display_update = true;      
+    }
+
+  }
+
+  if (timer_state == RUNNING) {
+    elapsedTime = millis() - startTime - totalPausedTime;
+    disp_showfooter("・一時停止");
+  }
+
+  unsigned long current_total_paused_time = totalPausedTime;
+  if (timer_state == PAUSED) {
+      current_total_paused_time += (millis() - pauseTime);
+      disp_showfooter("・再開 -リセット");
+  }
+  // When stopped, don't show accumulated pause time.
+  if (timer_state == STOPPED) {
+      current_total_paused_time = 0;
+      elapsedTime = 0; // Ensure elapsed time is also zero when stopped
+      disp_showfooter("・スタート");
+  }
+
+  String time_now_str = s_to_hms(elapsedTime / 1000);
+  String paused_time_str = "Paused: " + s_to_hms(current_total_paused_time / 1000);
+
+  if (needs_display_update || time_showing != time_now_str || paused_time_showing != paused_time_str) {
+    timer_stopwatch_ui(time_now_str, paused_time_str);
+    time_showing = time_now_str;
+    paused_time_showing = paused_time_str;
+    needs_display_update = false;
+  }
+
 }
   
-
-
 void checkForUpdates() {
   String url = "https://api.github.com/repos/" + String(GITHUB_USER) + "/" + String(GITHUB_REPO) + "/releases/latest";
 
@@ -427,16 +526,26 @@ void checkForUpdates() {
   http.end();
 }
 
+bool flag_offline = false;
+String mode = "Home";
 void setup() 
 {
   pinMode(LED_1, OUTPUT);
-  pinMode(button, INPUT);
+  pinMode(button, INPUT_PULLUP);
   setuptft();
+  if(digitalRead(button)==LOW){
+    flag_offline = true;
+    disp_showfooter("Offline Mode");
+    delay(1000);
+  }
+  if(!flag_offline){
+    setupwifi();
+    getntpTime();
+  }
+  
   TimerLib.setInterval_us(disp_showDateTime, 1000000);
   //wm.resetSettings();
   Serial.begin(115200);
-  setupwifi();
-  getntpTime();
   disp_clearMainScreen();
   disp_showTitle("StudyTimer");
   disp_showfooter(FIRMWARE_VERSION);
@@ -446,7 +555,9 @@ int value = 0;
 
 void loop() {
   // put your main code here, to run repeatedly:
-	ArduinoOTA.handle(); // OTAのハンドリング
+  if(!flag_offline){
+	  ArduinoOTA.handle(); // OTAのハンドリング
+  }
   timer_stopwatch();
 }
 
