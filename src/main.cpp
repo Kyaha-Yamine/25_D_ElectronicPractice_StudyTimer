@@ -22,7 +22,9 @@
 #define disp_def_txt_color ILI9341_WHITE
 #define disp_def_bg_color ILI9341_BLACK
 #define button 34
-
+#define lotaryenc_A 32
+#define lotaryenc_B 33
+#define pir 35
 
 
 Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC,TFT_RST);
@@ -37,17 +39,15 @@ QRCode qrcode;
 // --- 設定項目 ---
 #define GITHUB_USER "your_github_username" // GitHubのユーザー名
 #define GITHUB_REPO "your_github_repo"     // GitHubのリポジトリ名
-#define GAS_URL "https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec" // Google Apps ScriptのURL
-
-
+const char* GAS_URL ="https://script.google.com/macros/s/AKfycbyL0FWlo3UmhNErxdD16dvFVqLP6x7mkSsrCrEQls978QsYkRuEGcYylM8zdMaKJ_jA/exec";
 WiFiManager wm;
-
+bool flag_offline = false;
 #define LED_1 2
 
 Ticker ledTicker;
 WiFiServer server(80);
 
-
+String mode = "Home";
 
 void getntpTime(){
   configTime(9 * 3600, 0, "ntp.nict.jp", "time.google.com", "ntp.jst.mfeed.ad.jp");
@@ -84,6 +84,15 @@ String s_to_hms(int s){
   int m = (s % 3600) / 60;
   int sec = s % 60;
   return String(h) + ":" + String(twoDigit(m)) + ":" + String(twoDigit(sec));
+}
+
+String getTime(){
+  struct tm timeinfo;  
+  if(!getLocalTime(&timeinfo)){
+    return "";
+  }
+  String timetext = String(twoDigit(timeinfo.tm_hour)) + ":" + String(twoDigit(timeinfo.tm_min)) + ":" + String(twoDigit(timeinfo.tm_sec));
+  return timetext;
 }
 
 String titletext_showing;
@@ -290,6 +299,7 @@ void setupwifi(){
   server.begin();
 }
 
+
 // 0: no press, 1: single, 2: double, 3: triple, 4: long press
 int checkButton() {
     static int lastState = HIGH;
@@ -351,6 +361,37 @@ int checkButton() {
     return result;
 }
 
+void sendToGas(String* data,int count){
+  if(flag_offline){
+    return;
+  }
+  if(WiFi.status()== WL_CONNECTED){
+    disp_showfooter("データを送信しています...");
+    String clientid = WiFi.macAddress();
+    String url = String(GAS_URL) + "?clientid=" + clientid;
+    for(int i = 0;i < count;i++){
+      url += "&data" + String(i) + "=" + String(data[i]);
+    }
+    Serial.println(url);
+    
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient http;
+    http.begin(client, url);
+    int httpCode = http.GET();
+    if (httpCode > 0) {
+      String payload = http.getString();
+      Serial.println(httpCode);
+      Serial.println(payload);
+      disp_showfooter("送信しました！", ILI9341_GREEN);
+    } else {
+      Serial.println("Error on HTTP request");
+      disp_showfooter("送信失敗", ILI9341_RED);
+    }
+    http.end();
+  }
+}
+
 void timer_stopwatch_ui(String time, String paused_time){
   disp_clearMainScreen();
   disp_showTitle("Timer");
@@ -370,24 +411,49 @@ void timer_stopwatch_ui(String time, String paused_time){
   tft.print(paused_time);
 }
 
+enum TimerState { STOPPED, RUNNING, PAUSED };
+static TimerState timer_state = STOPPED; 
+static String startHMD ="";
+static String stopHMD="";
+static unsigned long startTime = 0;
+static unsigned long pauseTime = 0;
+static unsigned long totalPausedTime = 0;
+static unsigned long elapsedTime = 0;
+static String time_showing = "";
+static String paused_time_showing = "";
+static bool needs_display_update = true;
+static bool pir_pause = false;
+
+
 void timer_stopwatch(){
   mode = "Stopwatch";
-  enum TimerState { STOPPED, RUNNING, PAUSED };
-  static TimerState timer_state = STOPPED;
-
-  static unsigned long startTime = 0;
-  static unsigned long pauseTime = 0;
-  static unsigned long totalPausedTime = 0;
-  static unsigned long elapsedTime = 0;
-
-  static String time_showing = "";
-  static String paused_time_showing = "";
-  static bool needs_display_update = true;
+  //struct tm timeinfo;  
   int button_press = checkButton();
+  if(digitalRead(pir)==LOW){
+    if(timer_state == RUNNING){
+      pir_pause = true;
+      timer_state = PAUSED;
+      pauseTime = millis();
+      needs_display_update = true;
+    }
+  }else{
+    if(pir_pause&&timer_state == PAUSED){
+        pir_pause = false;
+        timer_state = RUNNING;
+        totalPausedTime += (millis() - pauseTime);
+        pauseTime = 0;
+        needs_display_update = true;
+    }
+  }
+
+
   if (button_press == 1) { // Single press
     switch(timer_state) {
       case STOPPED:
         timer_state = RUNNING;
+        if(startHMD == ""){
+          startHMD = getTime();
+        };
         startTime = millis();
         totalPausedTime = 0;
         elapsedTime = 0;
@@ -395,12 +461,14 @@ void timer_stopwatch(){
         break;
       case RUNNING:
         timer_state = PAUSED;
+        stopHMD = getTime();
         pauseTime = millis();
         break;
       case PAUSED:
         timer_state = RUNNING;
         totalPausedTime += (millis() - pauseTime);
         pauseTime = 0;
+        pir_pause = false;
         break;
     }
     needs_display_update = true;
@@ -408,13 +476,21 @@ void timer_stopwatch(){
 
   if (button_press == 4) { // Long press for reset
     if(timer_state == PAUSED){
-    //sendDataToSheet("stopwatch",elapsedTime, totalPausedTime);
     timer_state = STOPPED;
+    
+    Serial.println("reset");
+    Serial.println(startHMD);
+    Serial.println(stopHMD);
+    String sendData[] = {"stopwatch",startHMD,stopHMD,String(elapsedTime / 1000),String(totalPausedTime / 1000)};
+    sendToGas(sendData,5);
+    pir_pause = false;
     startTime = 0;
     pauseTime = 0;
-    totalPausedTime = 0;
+    startHMD = "";
+    stopHMD = "";
+    totalPausedTime =0;
     elapsedTime = 0;
-    needs_display_update = true;      
+    needs_display_update = true;
     }
 
   }
@@ -427,7 +503,11 @@ void timer_stopwatch(){
   unsigned long current_total_paused_time = totalPausedTime;
   if (timer_state == PAUSED) {
       current_total_paused_time += (millis() - pauseTime);
+      if(pir_pause){
+        disp_showfooter("【自動停止】動くと再開 -リセット");
+      }else{
       disp_showfooter("・再開 -リセット");
+      }
   }
   // When stopped, don't show accumulated pause time.
   if (timer_state == STOPPED) {
@@ -435,6 +515,7 @@ void timer_stopwatch(){
       elapsedTime = 0; // Ensure elapsed time is also zero when stopped
       disp_showfooter("・スタート");
   }
+  
 
   String time_now_str = s_to_hms(elapsedTime / 1000);
   String paused_time_str = "Paused: " + s_to_hms(current_total_paused_time / 1000);
@@ -526,12 +607,15 @@ void checkForUpdates() {
   http.end();
 }
 
-bool flag_offline = false;
-String mode = "Home";
+
+
 void setup() 
 {
+  pinMode(pir, INPUT);
   pinMode(LED_1, OUTPUT);
   pinMode(button, INPUT_PULLUP);
+  pinMode(lotaryenc_A, INPUT_PULLUP);
+  pinMode(lotaryenc_B, INPUT_PULLUP);
   setuptft();
   if(digitalRead(button)==LOW){
     flag_offline = true;
@@ -559,5 +643,21 @@ void loop() {
 	  ArduinoOTA.handle(); // OTAのハンドリング
   }
   timer_stopwatch();
+  
+  static int last_a_state = HIGH;
+  int a_state = digitalRead(lotaryenc_A);
+  if (a_state != last_a_state) {
+    if (a_state == LOW) { // Falling edge on pin A
+      if (digitalRead(lotaryenc_B) == HIGH) {
+        Serial.println("Rotary Encoder: Clockwise");
+      } else {
+        Serial.println("Rotary Encoder: Counter-Clockwise");
+      }
+    }
+    last_a_state = a_state;
+  }
+  Serial.println(digitalRead(pir));
+  
+
 }
 
