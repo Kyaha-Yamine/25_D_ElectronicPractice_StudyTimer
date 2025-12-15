@@ -719,7 +719,7 @@ void setup()
   disp_clearMainScreen();
   disp_showTitle("StudyTimer");
   disp_showfooter(FIRMWARE_VERSION);
-  //checkForUpdates();
+  checkForUpdates();
 }
 int value = 0;
 
