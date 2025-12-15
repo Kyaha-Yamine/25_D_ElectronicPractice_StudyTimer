@@ -28,14 +28,36 @@ jobs:
       - name: Install PlatformIO
         run: pip install platformio
 
-      # 4. プロジェクトをビルド (esp32devの部分はplatformio.iniの環境名に合わせる)
+      # 4. プロジェクトをビルド
       - name: Build PlatformIO Project
         run: platformio run -e esp32dev
 
-      # 5. リリースを作成し、firmware.binをアップロード
+      # 5. 結合バイナリ (Factory Image) の生成
+      # これを追加することで、個別のファイルと、1つにまとまったファイルを生成します
+      - name: Generate Factory Binary
+        run: |
+          # 隠れている boot_app0.bin を探してビルドフォルダにコピー
+          # (PlatformIOのパッケージ内にあるものを検索して利用)
+          find ~/.platformio/packages/framework-arduinoespressif32 -name boot_app0.bin -exec cp {} .pio/build/esp32dev/boot_app0.bin \; -quit
+          
+          # esptoolを使って4つのファイルを1つに結合 (factory.bin)
+          # オフセットはESP32の標準構成: 
+          # 0x1000=bootloader, 0x8000=partitions, 0xe000=boot_app0, 0x10000=app
+          esptool.py --chip esp32 merge_bin -o .pio/build/esp32dev/factory.bin \
+            --flash_mode dio --flash_freq 40m --flash_size 4MB \
+            0x1000 .pio/build/esp32dev/bootloader.bin \
+            0x8000 .pio/build/esp32dev/partitions.bin \
+            0xe000 .pio/build/esp32dev/boot_app0.bin \
+            0x10000 .pio/build/esp32dev/firmware.bin
+
+      # 6. リリースを作成し、全てのファイルをアップロード
       - name: Create Release and Upload Firmware
         uses: softprops/action-gh-release@v2
         with:
-          # リリースに含めるファイル
-          # パスはplatformio.iniの環境名(esp32dev)に合わせてください
-          files: .pio/build/esp32dev/firmware.bin
+          # リリースに含めるファイル一覧
+          files: |
+            .pio/build/esp32dev/firmware.bin
+            .pio/build/esp32dev/bootloader.bin
+            .pio/build/esp32dev/partitions.bin
+            .pio/build/esp32dev/boot_app0.bin
+            .pio/build/esp32dev/factory.bin
