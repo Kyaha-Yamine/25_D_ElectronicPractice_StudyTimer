@@ -34,11 +34,11 @@ QRCode qrcode;
 // PinAssign SDO=19,SCK=18,SDI=23,DC=17,RST=16,CS=5
 
 // 現在のファームウェアバージョン
-#define FIRMWARE_VERSION "v1.0.0"
+#define FIRMWARE_VERSION "v0.0.3"
 
 // --- 設定項目 ---
-#define GITHUB_USER "your_github_username" // GitHubのユーザー名
-#define GITHUB_REPO "your_github_repo"     // GitHubのリポジトリ名
+#define GITHUB_USER "Kyaha-Yamine" // GitHubのユーザー名
+#define GITHUB_REPO "25_D_ElectronicPractice_StudyTimer"     // GitHubのリポジトリ名
 const char* GAS_URL ="https://script.google.com/macros/s/AKfycbyL0FWlo3UmhNErxdD16dvFVqLP6x7mkSsrCrEQls978QsYkRuEGcYylM8zdMaKJ_jA/exec";
 WiFiManager wm;
 bool flag_offline = false;
