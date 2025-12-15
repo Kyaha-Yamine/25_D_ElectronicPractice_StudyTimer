@@ -6,6 +6,7 @@
 #include <WiFiManager.h>
 #include <HTTPClient.h>
 #include <HTTPUpdate.h>
+#include <Update.h>
 #include <ArduinoJson.h>
 #include <Ticker.h>
 #include <SPI.h>
@@ -39,6 +40,7 @@ QRCode qrcode;
 // --- 設定項目 ---
 #define GITHUB_USER "Kyaha-Yamine" // GitHubのユーザー名
 #define GITHUB_REPO "25_D_ElectronicPractice_StudyTimer"     // GitHubのリポジトリ名
+#define GITHUB_TOKEN "" // GitHubのトークン (プライベートリポジトリの場合に必要)
 const char* GAS_URL ="https://script.google.com/macros/s/AKfycbyL0FWlo3UmhNErxdD16dvFVqLP6x7mkSsrCrEQls978QsYkRuEGcYylM8zdMaKJ_jA/exec";
 WiFiManager wm;
 bool flag_offline = false;
@@ -532,79 +534,163 @@ void timer_stopwatch(){
 void checkForUpdates() {
   String url = "https://api.github.com/repos/" + String(GITHUB_USER) + "/" + String(GITHUB_REPO) + "/releases/latest";
 
+  WiFiClientSecure client;
+  client.setInsecure(); // GitHubの証明書検証をスキップ (本番運用ではルート証明書推奨)
+
   HTTPClient http;
-  http.begin(url);
+  http.begin(client, url);
   http.addHeader("User-Agent", "ESP32-OTA-Updater");
+  if (String(GITHUB_TOKEN) != "") {
+    http.addHeader("Authorization", "token " + String(GITHUB_TOKEN));
+  }
 
   int httpCode = http.GET();
-  if (httpCode > 0) {
-    if (httpCode == HTTP_CODE_OK) {
-      String payload = http.getString();
-      JsonDocument doc;
-      DeserializationError error = deserializeJson(doc, payload);
-
-      if (error) {
-        Serial.print(F("deserializeJson() failed: "));
-        Serial.println(error.c_str());
-        http.end();
-        return;
-      }
-
-      const char* latest_version = doc["tag_name"];
-      Serial.print("Current version: ");
-      Serial.println(FIRMWARE_VERSION);
-      Serial.print("Latest version: ");
-      Serial.println(latest_version);
-
-      // NOTE: strcmpは単純な文字列比較です。"v1.0.10"と"v1.0.2"のようなバージョンを
-      // 正しく比較できない可能性があります。より堅牢な比較のためには、バージョン番号を
-      // パースして数値として比較するロジックが必要です。
-      if (strcmp(latest_version, FIRMWARE_VERSION) != 0) {
-        Serial.println("New version available.");
-        JsonArray assets = doc["assets"];
-        String bin_url;
-        for (JsonObject asset : assets) {
-          String asset_name = asset["name"];
-          if (asset_name.endsWith(".bin")) {
-            bin_url = asset["browser_download_url"].as<String>();
-            break;
-          }
-        }
-
-        if (bin_url.length() > 0) {
-          Serial.print("Firmware URL: ");
-          Serial.println(bin_url);
-
-          // httpUpdateがリダイレクトを追跡するように設定
-          httpUpdate.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-
-          WiFiClientSecure client;
-          // DANGER: setInsecure()はサーバー証明書を検証しないため、中間者攻撃に対して脆弱になります。
-          // 可能であれば、代わりにサーバーのルートCA証明書をESP32にロードして検証してください。
-          client.setInsecure();
-
-          t_httpUpdate_return ret = httpUpdate.update(client, bin_url);
-
-          switch (ret) {
-            case HTTP_UPDATE_FAILED:
-              Serial.printf("HTTP_UPDATE_FAILED Error (%d): %s\n", httpUpdate.getLastError(), httpUpdate.getLastErrorString().c_str());
-              break;
-            case HTTP_UPDATE_NO_UPDATES:
-              Serial.println("HTTP_UPDATE_NO_UPDATES");
-              break;
-            case HTTP_UPDATE_OK:
-              Serial.println("HTTP_UPDATE_OK");
-              break;
-          }
-        }
-      } else {
-        Serial.println("Firmware is up to date.");
-      }
-    }
-  } else {
+  if (httpCode != HTTP_CODE_OK) {
     Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
+    http.end();
+    return;
   }
-  http.end();
+
+  String payload = http.getString();
+  JsonDocument doc;
+  DeserializationError error = deserializeJson(doc, payload);
+
+  if (error) {
+    Serial.print(F("deserializeJson() failed: "));
+    Serial.println(error.c_str());
+    http.end();
+    return;
+  }
+
+  const char* latest_version = doc["tag_name"];
+  Serial.print("Current version: ");
+  Serial.println(FIRMWARE_VERSION);
+  Serial.print("Latest version: ");
+  Serial.println(latest_version);
+
+  if (strcmp(latest_version, FIRMWARE_VERSION) == 0) {
+    Serial.println("Firmware is up to date.");
+    http.end();
+    return;
+  }
+
+  Serial.println("New version available.");
+  JsonArray assets = doc["assets"];
+  String asset_url = "";
+
+  for (JsonObject asset : assets) {
+    String asset_name = asset["name"];
+    if (asset_name.endsWith(".bin")) {
+       // プライベートリポジトリ対応のため、url (API URL) を使用
+       asset_url = asset["url"].as<String>();
+       break;
+    }
+  }
+
+  http.end(); // リリース情報取得用の接続を閉じる
+
+  if (asset_url.length() == 0) {
+    Serial.println("No suitable binary found in release.");
+    return;
+  }
+
+  Serial.print("Asset URL: ");
+  Serial.println(asset_url);
+
+  // 1. アセットのダウンロードURL（リダイレクト先）を取得
+  HTTPClient httpAsset;
+  httpAsset.begin(client, asset_url);
+  httpAsset.addHeader("User-Agent", "ESP32-OTA-Updater");
+  httpAsset.addHeader("Accept", "application/octet-stream");
+  if (String(GITHUB_TOKEN) != "") {
+    httpAsset.addHeader("Authorization", "token " + String(GITHUB_TOKEN));
+  }
+
+  const char * headerKeys[] = {"Location"};
+  httpAsset.collectHeaders(headerKeys, 1);
+  httpAsset.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS); // 自動リダイレクト無効
+
+  int assetHttpCode = httpAsset.GET();
+  String downloadUrl = "";
+
+  if (assetHttpCode == 302) {
+     downloadUrl = httpAsset.header("Location");
+     Serial.print("Redirect to: ");
+     Serial.println(downloadUrl);
+  } else if (assetHttpCode == 200) {
+     // リダイレクトされずに直接返ってきた場合（稀だが）
+     downloadUrl = asset_url;
+  } else {
+     Serial.printf("Failed to get download URL, error: %d\n", assetHttpCode);
+     httpAsset.end();
+     return;
+  }
+  httpAsset.end();
+
+  if (downloadUrl.length() == 0) {
+     return;
+  }
+
+  // 2. バイナリのダウンロードと書き込み (Authヘッダーなし)
+  HTTPClient httpDl;
+  httpDl.begin(client, downloadUrl);
+  httpDl.addHeader("User-Agent", "ESP32-OTA-Updater");
+  // AWS S3などの署名付きURLの場合、Authorizationヘッダーをつけてはいけない
+  httpDl.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+
+  int dlHttpCode = httpDl.GET();
+  if (dlHttpCode != HTTP_CODE_OK) {
+    Serial.printf("Download failed, error: %s\n", httpDl.errorToString(dlHttpCode).c_str());
+    httpDl.end();
+    return;
+  }
+
+  int contentLength = httpDl.getSize();
+  Serial.printf("Firmware size: %d\n", contentLength);
+
+  if (contentLength <= 0) {
+     Serial.println("Content-Length is 0 or invalid");
+     httpDl.end();
+     return;
+  }
+
+  bool canBegin = Update.begin(contentLength);
+  if (!canBegin) {
+      Serial.println("Not enough space to begin OTA");
+      disp_showfooter("Not enough space", ILI9341_RED);
+      httpDl.end();
+      return;
+  }
+
+  Serial.println("Begin OTA. This may take 2 - 5 mins...");
+  disp_showTitle("Updating...");
+  disp_showfooter("Downloading...", ILI9341_YELLOW);
+
+  size_t written = Update.writeStream(httpDl.getStream());
+
+  if (written == contentLength) {
+     Serial.println("Written : " + String(written) + " successfully");
+  } else {
+     Serial.println("Written only : " + String(written) + "/" + String(contentLength) + ". Retry?");
+  }
+
+  if (Update.end()) {
+     Serial.println("OTA done!");
+     if (Update.isFinished()) {
+        Serial.println("Update successfully completed. Rebooting.");
+        disp_showfooter("Update Success! Rebooting...", ILI9341_GREEN);
+        delay(2000);
+        ESP.restart();
+     } else {
+        Serial.println("Update not finished? Something went wrong!");
+        disp_showfooter("Update Failed (Unknown)", ILI9341_RED);
+     }
+  } else {
+     Serial.println("Error Occurred. Error #: " + String(Update.getError()));
+     disp_showfooter("Update Error: " + String(Update.getError()), ILI9341_RED);
+  }
+
+  httpDl.end();
 }
 
 
