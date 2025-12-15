@@ -580,7 +580,8 @@ void checkForUpdates() {
 
   for (JsonObject asset : assets) {
     String asset_name = asset["name"];
-    if (asset_name.endsWith(".bin")) {
+    // Workflowで生成される複数のアーティファクト(bootloader.binなど)から正しいFWを選択する
+    if (asset_name == "firmware.bin") {
        // プライベートリポジトリ対応のため、url (API URL) を使用
        asset_url = asset["url"].as<String>();
        break;
