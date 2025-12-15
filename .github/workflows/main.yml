@@ -1,7 +1,5 @@
-# ワークフローの名前
 name: Create Release and Upload Firmware
 
-# 実行されるタイミング: vから始まるタグ (例: v1.0, v1.2.3) がプッシュされた時
 on:
   push:
     tags:
@@ -9,52 +7,41 @@ on:
 
 jobs:
   build-and-release:
-    # Ubuntuの最新版で実行
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      # 1. ソースコードをチェックアウト
       - name: Check out repository
         uses: actions/checkout@v4
 
-      # 2. Pythonをセットアップ (PlatformIOに必要)
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.9'
 
-      # 3. PlatformIOをインストール
-      - name: Install PlatformIO
-        run: pip install platformio
+      # 修正1: esptool を明示的にインストールに追加
+      - name: Install PlatformIO and esptool
+        run: pip install platformio esptool
 
-      # 4. プロジェクトをビルド
       - name: Build PlatformIO Project
         run: platformio run -e esp32dev
 
-      # 5. 結合バイナリ (Factory Image) の生成
-      # これを追加することで、個別のファイルと、1つにまとまったファイルを生成します
       - name: Generate Factory Binary
         run: |
           # 隠れている boot_app0.bin を探してビルドフォルダにコピー
-          # (PlatformIOのパッケージ内にあるものを検索して利用)
           find ~/.platformio/packages/framework-arduinoespressif32 -name boot_app0.bin -exec cp {} .pio/build/esp32dev/boot_app0.bin \; -quit
           
-          # esptoolを使って4つのファイルを1つに結合 (factory.bin)
-          # オフセットはESP32の標準構成: 
-          # 0x1000=bootloader, 0x8000=partitions, 0xe000=boot_app0, 0x10000=app
-          esptool.py --chip esp32 merge_bin -o .pio/build/esp32dev/factory.bin \
+          # 修正2: python -m esptool を使用して結合
+          python -m esptool --chip esp32 merge_bin -o .pio/build/esp32dev/factory.bin \
             --flash_mode dio --flash_freq 40m --flash_size 4MB \
             0x1000 .pio/build/esp32dev/bootloader.bin \
             0x8000 .pio/build/esp32dev/partitions.bin \
             0xe000 .pio/build/esp32dev/boot_app0.bin \
             0x10000 .pio/build/esp32dev/firmware.bin
 
-      # 6. リリースを作成し、全てのファイルをアップロード
       - name: Create Release and Upload Firmware
         uses: softprops/action-gh-release@v2
         with:
-          # リリースに含めるファイル一覧
           files: |
             .pio/build/esp32dev/firmware.bin
             .pio/build/esp32dev/bootloader.bin
