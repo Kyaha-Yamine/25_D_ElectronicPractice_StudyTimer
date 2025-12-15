@@ -667,7 +667,32 @@ void checkForUpdates() {
   disp_showTitle("Updating...");
   disp_showfooter("Downloading...", ILI9341_YELLOW);
 
-  size_t written = Update.writeStream(httpDl.getStream());
+  //size_t written = Update.writeStream(httpDl.getStream());
+  Stream& stream = httpDl.getStream();
+  uint8_t buff[1024] = { 0 };
+  size_t written = 0;
+  int progress = 0;
+
+  while((httpDl.connected() || stream.available()) && (written < contentLength)) {
+      size_t size = stream.available();
+      if(size) {
+          int c = stream.readBytes(buff, ((size > sizeof(buff)) ? sizeof(buff) : size));
+          size_t w = Update.write(buff, c);
+          if (w != c) {
+             Serial.println("Write error!");
+             break;
+          }
+          written += w;
+
+          int newProgress = (written * 100) / contentLength;
+          if (newProgress > progress) {
+             progress = newProgress;
+             Serial.printf("Progress: %d%%\r", progress);
+             disp_showfooter("Progress: " + String(progress) + "%");
+          }
+      }
+      delay(1);
+  }
 
   if (written == contentLength) {
      Serial.println("Written : " + String(written) + " successfully");
