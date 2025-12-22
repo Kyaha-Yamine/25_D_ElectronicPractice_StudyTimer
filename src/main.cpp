@@ -509,6 +509,9 @@ void timer_stopwatch(){
     elapsedTime = 0;
     needs_display_update = true;
     }
+    if(timer_state == STOPPED){
+      mode = "Menu";
+    }
 
   }
 
@@ -530,9 +533,8 @@ void timer_stopwatch(){
   if (timer_state == STOPPED) {
       current_total_paused_time = 0;
       elapsedTime = 0; // Ensure elapsed time is also zero when stopped
-      disp_showfooter("・スタート -メニュー");
-      mode = "Menu";
-      
+      disp_showfooter("・スタート -リセット");
+      //mode = "Menu";
   }
   
 
@@ -745,7 +747,7 @@ void mode_menu_loop(){
   if (menu_needs_redraw){
     disp_clearMainScreen();
     disp_showTitle(mode);
-
+    disp_showfooter("・決定");
     tft.setTextSize(2);
     for (int i = 0; i < sizeof(menu_items) / sizeof(menu_items[0]); i++) {
       int y_pos = 50 + (i*40);
@@ -802,7 +804,6 @@ void setup()
   }
   
   TimerLib.setInterval_us(disp_showDateTime, 1000000);
-  //wm.resetSettings();
   Serial.begin(115200);
   disp_clearMainScreen();
   disp_showTitle("StudyTimer");
