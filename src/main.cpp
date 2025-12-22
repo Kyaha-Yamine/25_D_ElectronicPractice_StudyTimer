@@ -410,7 +410,7 @@ void sendToGas(String* data,int count){
 
 void mode_stopwatch_loop_ui(String time, String paused_time){
   disp_clearMainScreen();
-  disp_showTitle("Timer");
+  disp_showTitle("Stopwatch");
   tft.setTextSize(4);
   tft.setTextColor(disp_def_txt_color);
   int16_t x1, y1;
