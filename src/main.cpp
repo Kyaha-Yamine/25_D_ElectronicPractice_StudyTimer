@@ -747,7 +747,7 @@ void mode_menu_loop(){
   if (menu_needs_redraw){
     disp_clearMainScreen();
     disp_showTitle(mode);
-    disp_showfooter("・決定")
+    disp_showfooter("・決定");
     tft.setTextSize(2);
     for (int i = 0; i < sizeof(menu_items) / sizeof(menu_items[0]); i++) {
       int y_pos = 50 + (i*40);
