@@ -35,7 +35,7 @@ QRCode qrcode;
 // PinAssign SDO=19,SCK=18,SDI=23,DC=17,RST=16,CS=5
 
 // 現在のファームウェアバージョン
-#define FIRMWARE_VERSION "v0.0.4"
+#define FIRMWARE_VERSION "v0.0.5"
 
 // --- 設定項目 ---
 #define GITHUB_USER "Kyaha-Yamine" // GitHubのユーザー名
@@ -301,7 +301,22 @@ void setupwifi(){
   server.begin();
 }
 
-
+int checkEncoder(){
+  static int last_a_state = HIGH;
+  int a_state = digitalRead(lotaryenc_A);
+  int result = 0;
+  if (a_state != last_a_state) {
+    if (a_state == LOW) { // Falling edge on pin
+      if (digitalRead(lotaryenc_B) == HIGH) {
+        result = 1;
+      } else {
+        result = -1;
+      }
+    }
+    last_a_state = a_state;
+  }
+  return result;
+}
 // 0: no press, 1: single, 2: double, 3: triple, 4: long press
 int checkButton() {
     static int lastState = HIGH;
@@ -515,7 +530,9 @@ void timer_stopwatch(){
   if (timer_state == STOPPED) {
       current_total_paused_time = 0;
       elapsedTime = 0; // Ensure elapsed time is also zero when stopped
-      disp_showfooter("・スタート");
+      disp_showfooter("・スタート -メニュー");
+      mode = "Menu";
+      
   }
   
 
@@ -719,7 +736,52 @@ void checkForUpdates() {
   httpDl.end();
 }
 
+String menu_items[] = {"ストップウォッチ", "タイマー", "設定"};
+String menu_items_mode[] = {"Stopwatch", "Timer", "Settings"};
+bool menu_needs_redraw = true;
+int currentMenuIndex = 0;
 
+void mode_menu_loop(){
+  if (menu_needs_redraw){
+    disp_clearMainScreen();
+    disp_showTitle(mode);
+
+    tft.setTextSize(2);
+    for (int i = 0; i < sizeof(menu_items) / sizeof(menu_items[0]); i++) {
+      int y_pos = 50 + (i*40);
+      u8g2.setCursor(20, y_pos +18);
+      if (i == currentMenuIndex){
+        tft.setTextColor(ILI9341_YELLOW);
+        u8g2.setForegroundColor(ILI9341_YELLOW);
+        u8g2.print("> "+menu_items[i]);
+      }else{
+        tft.setTextColor(disp_def_txt_color);
+        u8g2.setForegroundColor(disp_def_txt_color);
+        u8g2.print("  " + menu_items[i]);
+      }
+    }
+    menu_needs_redraw = false;
+  }
+
+  int enc_diff = checkEncoder();
+  if (enc_diff != 0) {
+    currentMenuIndex += enc_diff;
+    if (currentMenuIndex < 0) {
+      currentMenuIndex = sizeof(menu_items) / sizeof(menu_items[0]) - 1;
+    } else if (currentMenuIndex >= sizeof(menu_items) / sizeof(menu_items[0])) {
+      currentMenuIndex = 0;
+    }
+    menu_needs_redraw = true;
+  
+  }
+
+  int button_press = checkButton();
+  if (button_press == 1) {
+    mode = menu_items_mode[currentMenuIndex];
+    disp_clearMainScreen();
+    menu_needs_redraw = true;
+  }
+}
 
 void setup() 
 {
@@ -754,22 +816,14 @@ void loop() {
   if(!flag_offline){
 	  ArduinoOTA.handle(); // OTAのハンドリング
   }
-  timer_stopwatch();
-  
-  static int last_a_state = HIGH;
-  int a_state = digitalRead(lotaryenc_A);
-  if (a_state != last_a_state) {
-    if (a_state == LOW) { // Falling edge on pin A
-      if (digitalRead(lotaryenc_B) == HIGH) {
-        Serial.println("Rotary Encoder: Clockwise");
-      } else {
-        Serial.println("Rotary Encoder: Counter-Clockwise");
-      }
-    }
-    last_a_state = a_state;
+  if (mode == "Menu"){
+    mode_menu_loop();
   }
-  Serial.println(digitalRead(pir));
-  
-
+  else if (mode == "Stopwatch"){
+    timer_stopwatch();
+  }
+  else{
+    mode = "Menu";
+  }
 }
 
