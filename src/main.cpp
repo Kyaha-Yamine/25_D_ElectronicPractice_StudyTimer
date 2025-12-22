@@ -141,16 +141,9 @@ int checkButton() {
 // ロータリーエンコーダのチャタリング防止
 int checkEncoder() {
   static int last_a_state = HIGH;
-  static unsigned long lastDebounceTime = 0;
   int result = 0;
 
   int a_state = digitalRead(lotaryenc_A);
-
-  if (a_state != last_a_state) {
-    lastDebounceTime = millis();
-  }
-
-  if ((millis() - lastDebounceTime) > 50) { // 50msのチャタリング防止
     if (a_state != last_a_state) {
       if (a_state == LOW) { // Falling edge on pin A
         if (digitalRead(lotaryenc_B) == HIGH) {
@@ -161,7 +154,6 @@ int checkEncoder() {
       }
       last_a_state = a_state;
     }
-  }
   return result;
 }
 
