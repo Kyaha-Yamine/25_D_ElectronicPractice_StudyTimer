@@ -20,8 +20,7 @@
 #define TFT_RST 16
 #define TFT_CS 5
 #define TFT_DC 17
-#define disp_def_txt_color ILI9341_WHITE
-#define disp_def_bg_color ILI9341_BLACK
+
 #define button 34
 #define lotaryenc_A 32
 #define lotaryenc_B 33
@@ -35,7 +34,7 @@ QRCode qrcode;
 // PinAssign SDO=19,SCK=18,SDI=23,DC=17,RST=16,CS=5
 
 // 現在のファームウェアバージョン
-#define FIRMWARE_VERSION "v0.0.6"
+#define FIRMWARE_VERSION "v0.0.7"
 
 // --- 設定項目 ---
 #define GITHUB_USER "Kyaha-Yamine" // GitHubのユーザー名
@@ -62,6 +61,146 @@ String twoDigit(int number) {
   return String(number);
 }
 
+String s_to_hms(int s){
+  int h = s / 3600;
+  int m = (s % 3600) / 60;
+  int sec = s % 60;
+  return String(h) + ":" + String(twoDigit(m)) + ":" + String(twoDigit(sec));
+}
+
+String getTime(){
+  struct tm timeinfo;  
+  if(!getLocalTime(&timeinfo)){
+    return "";
+  }
+  String timetext = String(twoDigit(timeinfo.tm_hour)) + ":" + String(twoDigit(timeinfo.tm_min)) + ":" + String(twoDigit(timeinfo.tm_sec));
+  return timetext;
+}
+//--信号入力--
+//ボタン 0: no press, 1: single, 2: double, 3: triple, 4: long press
+int checkButton() {
+    static int lastState = HIGH;
+    static int currentState = HIGH;
+    static unsigned long lastDebounceTime = 0;
+    static unsigned long pressTime = 0;
+    static unsigned long releaseTime = 0;
+    static int pressCount = 0;
+    static bool longPressSent = false;
+
+    int reading = digitalRead(button);
+    int result = 0; // 0 = no press
+
+    // Debounce
+    if (reading != lastState) {
+        lastDebounceTime = millis();
+    }
+
+    if ((millis() - lastDebounceTime) > 50) {
+        // If the button state has changed
+        if (reading != currentState) {
+            currentState = reading;
+
+            if (currentState == LOW) {
+                // Button was pressed
+                pressTime = millis();
+                longPressSent = false;
+            } else {
+                // Button was released
+                releaseTime = millis();
+                if (!longPressSent) {
+                    pressCount++;
+                }
+            }
+        }
+    }
+
+    lastState = reading;
+
+    // Check for long press
+    if (currentState == LOW && !longPressSent && (millis() - pressTime > 1000)) {
+        result = 4; // Long press
+        longPressSent = true;
+        pressCount = 0; // Reset counter on long press
+    }
+
+    // Check for multi-press
+    if (pressCount > 0 && (millis() - releaseTime > 300)) {
+        if (pressCount == 1) {
+            result = 1; // Single press
+        } else if (pressCount == 2) {
+            result = 2; // Double press
+        } else if (pressCount >= 3) {
+            result = 3; // Triple press
+        }
+        pressCount = 0;
+    }
+
+    return result;
+}
+// エンコーダー入力
+// ロータリーエンコーダのチャタリング防止
+int checkEncoder() {
+  static int last_a_state = HIGH;
+  static unsigned long lastDebounceTime = 0;
+  int result = 0;
+
+  int a_state = digitalRead(lotaryenc_A);
+
+  if (a_state != last_a_state) {
+    lastDebounceTime = millis();
+  }
+
+  if ((millis() - lastDebounceTime) > 50) { // 50msのチャタリング防止
+    if (a_state != last_a_state) {
+      if (a_state == LOW) { // Falling edge on pin A
+        if (digitalRead(lotaryenc_B) == HIGH) {
+          result = 1; // Clockwise
+        } else {
+          result = -1; // Counter-clockwise
+        }
+      }
+      last_a_state = a_state;
+    }
+  }
+  return result;
+}
+
+//---SYSTEM UI描画---
+int disp_def_txt_color = ILI9341_WHITE;
+int disp_def_bg_color = ILI9341_BLACK;
+int disp_def_highlight_bg_color = ILI9341_WHITE;
+int disp_def_highlight_txt_color = ILI9341_BLACK;
+//header 表示エリア x:0~229 y:0~20
+String titletext_showing;
+void disp_showTitle(String title ,int color = disp_def_txt_color){
+  if(titletext_showing == title){
+    return;
+  }
+  titletext_showing = title;
+  tft.fillRect(0,0,229,19,disp_def_bg_color); 
+  u8g2.setCursor(0, 15);
+  u8g2.setForegroundColor(color);
+  tft.setTextColor(color);
+  tft.drawLine(0,20,320,20,color);
+  u8g2.print(title);
+}
+
+String footertext_showing;
+//footer 表示エリア x:0~320 y:223~309
+void disp_showfooter(String text, int color = disp_def_txt_color){
+  if(footertext_showing == text){
+    return;
+  }
+  footertext_showing = text;
+  tft.fillRect(0,224,320,86,disp_def_bg_color); 
+  u8g2.setCursor(0, 238);
+  u8g2.setForegroundColor(color);
+  tft.setTextColor(color);
+  tft.drawLine(0,223,320,223,color);
+  u8g2.print(text);
+}
+
+//日付時刻 表示エリア x:230~320 y:0~15
 String datetext_showing;
 void disp_showDateTime(){
   ArduinoOTA.handle(); // OTAのハンドリング
@@ -81,54 +220,94 @@ void disp_showDateTime(){
   }
 }
 
-String s_to_hms(int s){
-  int h = s / 3600;
-  int m = (s % 3600) / 60;
-  int sec = s % 60;
-  return String(h) + ":" + String(twoDigit(m)) + ":" + String(twoDigit(sec));
-}
-
-String getTime(){
-  struct tm timeinfo;  
-  if(!getLocalTime(&timeinfo)){
-    return "";
-  }
-  String timetext = String(twoDigit(timeinfo.tm_hour)) + ":" + String(twoDigit(timeinfo.tm_min)) + ":" + String(twoDigit(timeinfo.tm_sec));
-  return timetext;
-}
-
-String titletext_showing;
-void disp_showTitle(String title ,int color = disp_def_txt_color){
-  if(titletext_showing == title){
-    return;
-  }
-  titletext_showing = title;
-  tft.fillRect(0,0,229,19,disp_def_bg_color); 
-  u8g2.setCursor(0, 15);
-  u8g2.setForegroundColor(color);
-  tft.setTextColor(color);
-  tft.drawLine(0,20,320,20,color);
-  u8g2.print(title);
-}
-
-String footertext_showing;
-void disp_showfooter(String text, int color = disp_def_txt_color){
-  if(footertext_showing == text){
-    return;
-  }
-  footertext_showing = text;
-  tft.fillRect(0,224,320,86,disp_def_bg_color); 
-  u8g2.setCursor(0, 238);
-  u8g2.setForegroundColor(color);
-  tft.setTextColor(color);
-  tft.drawLine(0,223,320,223,color);
-  u8g2.print(text);
-
-}
-
+//mainscreen 削除エリア x:0~320 y:21~222
 void disp_clearMainScreen(){
   tft.fillRect(0,21,320,201,disp_def_bg_color);
 }
+
+//listmenu 表示エリア x:0~320 y:21~222 
+String disp_listMenu(String menuItems_return[], String menuItems_disp[], int list_length, String title = "Menu") {
+  //setup
+  disp_clearMainScreen();
+  disp_showTitle(title);
+  disp_showfooter("・決定");
+  tft.setTextSize(2);
+  int selected = 0;
+  int show_start = 0;
+  int bg_highlight_color = ILI9341_WHITE;
+  int txt_highlight_color = ILI9341_BLACK;
+  bool needs_redraw = true;
+  //loop
+  while (1)
+  {
+    if(needs_redraw){
+      // listの描画
+      for (int i = 0; i < list_length; i++) {
+        if (i >= show_start && i < show_start + 10) {
+          if (i == selected) {
+            tft.fillRect(0, 21 + (i - show_start) * 20, 320, 20, bg_highlight_color);
+            u8g2.setForegroundColor(txt_highlight_color);
+            u8g2.setBackgroundColor(bg_highlight_color);
+            tft.setTextColor(txt_highlight_color);
+            u8g2.setCursor(20, 21 + (i - show_start) * 20 +15);
+          } else {
+            tft.fillRect(0, 21 + (i - show_start) * 20, 320, 20, disp_def_bg_color);
+            u8g2.setForegroundColor(disp_def_txt_color);
+            u8g2.setBackgroundColor(disp_def_bg_color);
+            tft.setTextColor(disp_def_txt_color);
+            u8g2.setCursor(20, 21 + (i - show_start) * 20 +15);
+
+          }
+          u8g2.print(menuItems_disp[i]);
+        }
+        if(list_length > 10){
+          // スクロールバーの描画
+          int scrollbarHeight = 201; // 222 - 21
+          int scrollbarWidth = 10;
+          int scrollbarX = 310;
+          int scrollbarY = 21;
+          tft.fillRect(scrollbarX, scrollbarY, scrollbarWidth, scrollbarHeight, ILI9341_BLACK);
+          
+          // スクロールバーの位置を計算
+          float scrollRatio = (float)show_start / (list_length - 10);
+          int scrollBarHeight = max(20, (int)(scrollbarHeight * (10.0 / list_length)));
+          int scrollBarY = scrollbarY + (scrollbarHeight - scrollBarHeight) * scrollRatio;
+          
+          tft.fillRect(scrollbarX, scrollBarY, scrollbarWidth, scrollBarHeight, ILI9341_WHITE);
+        }
+      u8g2.setForegroundColor(disp_def_txt_color);
+      u8g2.setBackgroundColor(disp_def_bg_color);
+      tft.setTextColor(disp_def_txt_color);
+      needs_redraw = false;
+      }
+    }
+      int button_press = checkButton();
+      if (button_press != 0) {
+        if (button_press == 1) { // Single press
+          break;
+        }
+      }
+      int encoder_change = checkEncoder();
+      if (encoder_change != 0) {
+        selected += encoder_change;
+        if (selected < 0) {
+          selected = 0;
+        } else if (selected >= list_length) {
+          selected = list_length - 1;
+        }
+
+        if (selected >= show_start + 10) {
+          show_start = selected - 9;
+        } else if (selected < show_start) {
+          show_start = selected;
+        }
+        needs_redraw = true;
+      }
+    }
+
+  return menuItems_return[selected];
+}
+
 
 void displayQRCodeHelper(String text, int x, int y, int moduleSize = 4) {
     // QRコードのデータを生成 (バージョン3, 低エラー訂正)
@@ -300,82 +479,7 @@ void setupwifi(){
   server.begin();
 }
 
-int checkEncoder(){
-  static int last_a_state = HIGH;
-  int a_state = digitalRead(lotaryenc_A);
-  int result = 0;
-  if (a_state != last_a_state) {
-    if (a_state == LOW) { // Falling edge on pin
-      if (digitalRead(lotaryenc_B) == HIGH) {
-        result = 1;
-      } else {
-        result = -1;
-      }
-    }
-    last_a_state = a_state;
-  }
-  return result;
-}
-// 0: no press, 1: single, 2: double, 3: triple, 4: long press
-int checkButton() {
-    static int lastState = HIGH;
-    static int currentState = HIGH;
-    static unsigned long lastDebounceTime = 0;
-    static unsigned long pressTime = 0;
-    static unsigned long releaseTime = 0;
-    static int pressCount = 0;
-    static bool longPressSent = false;
 
-    int reading = digitalRead(button);
-    int result = 0; // 0 = no press
-
-    // Debounce
-    if (reading != lastState) {
-        lastDebounceTime = millis();
-    }
-
-    if ((millis() - lastDebounceTime) > 50) {
-        // If the button state has changed
-        if (reading != currentState) {
-            currentState = reading;
-
-            if (currentState == LOW) {
-                // Button was pressed
-                pressTime = millis();
-                longPressSent = false;
-            } else {
-                // Button was released
-                releaseTime = millis();
-                if (!longPressSent) {
-                    pressCount++;
-                }
-            }
-        }
-    }
-
-    lastState = reading;
-
-    // Check for long press
-    if (currentState == LOW && !longPressSent && (millis() - pressTime > 1000)) {
-        result = 4; // Long press
-        longPressSent = true;
-        pressCount = 0; // Reset counter on long press
-    }
-
-    // Check for multi-press
-    if (pressCount > 0 && (millis() - releaseTime > 300)) {
-        if (pressCount == 1) {
-            result = 1; // Single press
-        } else if (pressCount == 2) {
-            result = 2; // Double press
-        } else if (pressCount >= 3) {
-            result = 3; // Triple press
-        }
-        pressCount = 0;
-    }
-
-    return result;
-}
 
 void sendToGas(String* data,int count){
   if(flag_offline){
@@ -741,48 +845,8 @@ void checkForUpdates() {
 
 String menu_items[] = {"ストップウォッチ", "タイマー", "設定"};
 String menu_items_mode[] = {"Stopwatch", "Timer", "Settings"};
-bool menu_needs_redraw = true;
-int currentMenuIndex = 0;
-void mode_menu_loop(){
-  if (menu_needs_redraw){
-    disp_clearMainScreen();
-    disp_showTitle(mode);
-    disp_showfooter("・決定");
-    tft.setTextSize(2);
-    for (int i = 0; i < sizeof(menu_items) / sizeof(menu_items[0]); i++) {
-      int y_pos = 50 + (i*40);
-      u8g2.setCursor(20, y_pos +18);
-      if (i == currentMenuIndex){
-        tft.setTextColor(ILI9341_YELLOW);
-        u8g2.setForegroundColor(ILI9341_YELLOW);
-        u8g2.print("> "+menu_items[i]);
-      }else{
-        tft.setTextColor(disp_def_txt_color);
-        u8g2.setForegroundColor(disp_def_txt_color);
-        u8g2.print("  " + menu_items[i]);
-      }
-    }
-    menu_needs_redraw = false;
-  }
-
-  int enc_diff = checkEncoder();
-  if (enc_diff != 0) {
-    currentMenuIndex += enc_diff;
-    if (currentMenuIndex < 0) {
-      currentMenuIndex = sizeof(menu_items) / sizeof(menu_items[0]) - 1;
-    } else if (currentMenuIndex >= sizeof(menu_items) / sizeof(menu_items[0])) {
-      currentMenuIndex = 0;
-    }
-    menu_needs_redraw = true;
-  
-  }
-
-  int button_press = checkButton();
-  if (button_press == 1) {
-    mode = menu_items_mode[currentMenuIndex];
-    disp_clearMainScreen();
-    menu_needs_redraw = true;
-  }
+void mode_menu(){
+  mode = disp_listMenu(menu_items_mode, menu_items, 3, "MainMenu");
 }
 
 void setup() 
@@ -817,7 +881,7 @@ void loop() {
 	  ArduinoOTA.handle(); // OTAのハンドリング
   }
   if (mode == "Menu"){
-    mode_menu_loop();
+    mode_menu();
   }
   else if (mode == "Stopwatch"){
     mode_stopwatch_loop();
