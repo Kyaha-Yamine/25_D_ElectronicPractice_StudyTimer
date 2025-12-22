@@ -35,7 +35,7 @@ QRCode qrcode;
 // PinAssign SDO=19,SCK=18,SDI=23,DC=17,RST=16,CS=5
 
 // 現在のファームウェアバージョン
-#define FIRMWARE_VERSION "v0.0.5"
+#define FIRMWARE_VERSION "v0.0.6"
 
 // --- 設定項目 ---
 #define GITHUB_USER "Kyaha-Yamine" // GitHubのユーザー名
@@ -168,8 +168,7 @@ void setuptft(){
   tft.setTextColor(disp_def_txt_color);
   u8g2.setFontMode(1); // 透過モード
   u8g2.setFont(u8g2_font_unifont_t_japanese1); // 日本語フォント
-  disp_showTitle("StudyTimer");
-  disp_showfooter(FIRMWARE_VERSION);
+  disp_showTitle("StudyTimer "+String(FIRMWARE_VERSION));
 }
 
 void configModeCallback (WiFiManager *myWiFiManager) {
@@ -409,7 +408,7 @@ void sendToGas(String* data,int count){
   }
 }
 
-void timer_stopwatch_ui(String time, String paused_time){
+void mode_stopwatch_loop_ui(String time, String paused_time){
   disp_clearMainScreen();
   disp_showTitle("Timer");
   tft.setTextSize(4);
@@ -428,134 +427,135 @@ void timer_stopwatch_ui(String time, String paused_time){
   tft.print(paused_time);
 }
 
-enum TimerState { STOPPED, RUNNING, PAUSED };
-static TimerState timer_state = STOPPED; 
-static String startHMD ="";
-static String stopHMD="";
-static unsigned long startTime = 0;
-static unsigned long pauseTime = 0;
-static unsigned long totalPausedTime = 0;
-static unsigned long elapsedTime = 0;
-static String time_showing = "";
-static String paused_time_showing = "";
-static bool needs_display_update = true;
-static bool pir_pause = false;
+enum TimerState { STOPPED, RUNNING, PAUSED, SETUP };
+static TimerState sw_state = SETUP; 
+static String sw_startHMD ="";
+static String sw_stopHMD="";
+static unsigned long sw_startTime = 0;
+static unsigned long sw_pauseTime = 0;
+static unsigned long sw_totalPausedTime = 0;
+static unsigned long sw_elapsedTime = 0;
+static String sw_time_showing = "";
+static String sw_paused_time_showing = "";
+static bool sw_needs_display_update = true;
+static bool sw_pir_pause = false;
 
 
-void timer_stopwatch(){
-  mode = "Stopwatch";
-  //struct tm timeinfo;  
+void mode_stopwatch_loop(){
+  if(sw_state == SETUP){
+    sw_state = STOPPED;
+    sw_needs_display_update = true;
+  }
+
   int button_press = checkButton();
   if(digitalRead(pir)==LOW){
-    if(timer_state == RUNNING){
-      pir_pause = true;
-      timer_state = PAUSED;
-      pauseTime = millis();
-      needs_display_update = true;
+    if(sw_state == RUNNING){
+      sw_pir_pause = true;
+      sw_state = PAUSED;
+      sw_pauseTime = millis();
+      sw_needs_display_update = true;
     }
   }else{
-    if(pir_pause&&timer_state == PAUSED){
-        pir_pause = false;
-        timer_state = RUNNING;
-        totalPausedTime += (millis() - pauseTime);
-        pauseTime = 0;
-        needs_display_update = true;
+    if(sw_pir_pause&&sw_state == PAUSED){
+        sw_pir_pause = false;
+        sw_state = RUNNING;
+        sw_totalPausedTime += (millis() - sw_pauseTime);
+        sw_pauseTime = 0;
+        sw_needs_display_update = true;
     }
   }
 
 
-  if (button_press == 1) { // Single press
-    switch(timer_state) {
+  if (checkButton() == 1) { // Single press
+    switch(sw_state) {
       case STOPPED:
-        timer_state = RUNNING;
-        if(startHMD == ""){
-          startHMD = getTime();
+        sw_state = RUNNING;
+        if(sw_startHMD == ""){
+          sw_startHMD = getTime();
         };
-        startTime = millis();
-        totalPausedTime = 0;
-        elapsedTime = 0;
-        pauseTime = 0;
+        sw_startTime = millis();
+        sw_totalPausedTime = 0;
+        sw_elapsedTime = 0;
+        sw_pauseTime = 0;
         break;
       case RUNNING:
-        timer_state = PAUSED;
-        stopHMD = getTime();
-        pauseTime = millis();
+        sw_state = PAUSED;
+        sw_stopHMD = getTime();
+        sw_pauseTime = millis();
         break;
       case PAUSED:
-        timer_state = RUNNING;
-        totalPausedTime += (millis() - pauseTime);
-        pauseTime = 0;
-        pir_pause = false;
+        sw_state = RUNNING;
+        sw_totalPausedTime += (millis() - sw_pauseTime);
+        sw_pauseTime = 0;
+        sw_pir_pause = false;
         break;
     }
-    needs_display_update = true;
+    sw_needs_display_update = true;
   }
 
-  if (button_press == 4) { // Long press for reset
-    if(timer_state == PAUSED){
-    timer_state = STOPPED;
-    
-    Serial.println("reset");
-    Serial.println(startHMD);
-    Serial.println(stopHMD);
-    String sendData[] = {"stopwatch",startHMD,stopHMD,String(elapsedTime / 1000),String(totalPausedTime / 1000)};
-    sendToGas(sendData,5);
-    pir_pause = false;
-    startTime = 0;
-    pauseTime = 0;
-    startHMD = "";
-    stopHMD = "";
-    totalPausedTime =0;
-    elapsedTime = 0;
-    needs_display_update = true;
+  if (checkButton() == 4) { // Long press for reset
+    if(sw_state == PAUSED){
+      Serial.println("reset");
+      Serial.println(sw_startHMD);
+      Serial.println(sw_stopHMD);
+      String sendData[] = {"stopwatch",sw_startHMD,sw_stopHMD,String(sw_elapsedTime / 1000),String(sw_totalPausedTime / 1000)};
+      sendToGas(sendData,5);
+      sw_pir_pause = false;
+      sw_startTime = 0;
+      sw_pauseTime = 0;
+      sw_startHMD = "";
+      sw_stopHMD = "";
+      sw_totalPausedTime =0;
+      sw_elapsedTime = 0;
+      sw_needs_display_update = true;
+      sw_state = STOPPED;
     }
-    if(timer_state == STOPPED){
+    if(sw_state == STOPPED){
       mode = "Menu";
+      sw_state = SETUP;
     }
-
   }
 
-  if (timer_state == RUNNING) {
-    elapsedTime = millis() - startTime - totalPausedTime;
+  if (sw_state == RUNNING) {
+    sw_elapsedTime = millis() - sw_startTime - sw_totalPausedTime;
     disp_showfooter("・一時停止");
   }
 
-  unsigned long current_total_paused_time = totalPausedTime;
-  if (timer_state == PAUSED) {
-      current_total_paused_time += (millis() - pauseTime);
-      if(pir_pause){
+  unsigned long current_total_paused_time = sw_totalPausedTime;
+  if (sw_state == PAUSED) {
+      current_total_paused_time += (millis() - sw_pauseTime);
+      if(sw_pir_pause){
         disp_showfooter("【自動停止】動くと再開 -リセット");
       }else{
       disp_showfooter("・再開 -リセット");
       }
   }
   // When stopped, don't show accumulated pause time.
-  if (timer_state == STOPPED) {
+  if (sw_state == STOPPED) {
       current_total_paused_time = 0;
-      elapsedTime = 0; // Ensure elapsed time is also zero when stopped
-      disp_showfooter("・スタート -リセット");
+      sw_elapsedTime = 0; // Ensure elapsed time is also zero when stopped
+      disp_showfooter("・スタート -Menu");
       //mode = "Menu";
   }
   
-
-  String time_now_str = s_to_hms(elapsedTime / 1000);
+  String time_now_str = s_to_hms(sw_elapsedTime / 1000);
   String paused_time_str = "Paused: " + s_to_hms(current_total_paused_time / 1000);
 
-  if (needs_display_update || time_showing != time_now_str || paused_time_showing != paused_time_str) {
-    timer_stopwatch_ui(time_now_str, paused_time_str);
-    time_showing = time_now_str;
-    paused_time_showing = paused_time_str;
-    needs_display_update = false;
+  if (sw_needs_display_update || sw_time_showing != time_now_str || sw_paused_time_showing != paused_time_str) {
+    mode_stopwatch_loop_ui(time_now_str, paused_time_str);
+    sw_time_showing = time_now_str;
+    sw_paused_time_showing = paused_time_str;
+    sw_needs_display_update = false;
   }
-
 }
   
 void checkForUpdates() {
+  disp_showfooter("Checking for updates...");
+  Serial.println("Checking for updates...");
   String url = "https://api.github.com/repos/" + String(GITHUB_USER) + "/" + String(GITHUB_REPO) + "/releases/latest";
 
   WiFiClientSecure client;
-  client.setInsecure(); // GitHubの証明書検証をスキップ (本番運用ではルート証明書推奨)
-
+  client.setInsecure();
   HTTPClient http;
   http.begin(client, url);
   http.addHeader("User-Agent", "ESP32-OTA-Updater");
@@ -742,7 +742,6 @@ String menu_items[] = {"ストップウォッチ", "タイマー", "設定"};
 String menu_items_mode[] = {"Stopwatch", "Timer", "Settings"};
 bool menu_needs_redraw = true;
 int currentMenuIndex = 0;
-
 void mode_menu_loop(){
   if (menu_needs_redraw){
     disp_clearMainScreen();
@@ -813,7 +812,6 @@ void setup()
 int value = 0;
 
 void loop() {
-  // put your main code here, to run repeatedly:
   if(!flag_offline){
 	  ArduinoOTA.handle(); // OTAのハンドリング
   }
@@ -821,7 +819,7 @@ void loop() {
     mode_menu_loop();
   }
   else if (mode == "Stopwatch"){
-    timer_stopwatch();
+    mode_stopwatch_loop();
   }
   else{
     mode = "Menu";
