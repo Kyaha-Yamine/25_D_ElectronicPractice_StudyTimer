@@ -465,54 +465,55 @@ void mode_stopwatch_loop(){
     }
   }
 
-
-  if (checkButton() == 1) { // Single press
-    switch(sw_state) {
-      case STOPPED:
-        sw_state = RUNNING;
-        if(sw_startHMD == ""){
-          sw_startHMD = getTime();
-        };
-        sw_startTime = millis();
-        sw_totalPausedTime = 0;
-        sw_elapsedTime = 0;
-        sw_pauseTime = 0;
-        break;
-      case RUNNING:
-        sw_state = PAUSED;
-        sw_stopHMD = getTime();
-        sw_pauseTime = millis();
-        break;
-      case PAUSED:
-        sw_state = RUNNING;
-        sw_totalPausedTime += (millis() - sw_pauseTime);
-        sw_pauseTime = 0;
-        sw_pir_pause = false;
-        break;
-    }
-    sw_needs_display_update = true;
-  }
-
-  if (checkButton() == 4) { // Long press for reset
-    if(sw_state == PAUSED){
-      Serial.println("reset");
-      Serial.println(sw_startHMD);
-      Serial.println(sw_stopHMD);
-      String sendData[] = {"stopwatch",sw_startHMD,sw_stopHMD,String(sw_elapsedTime / 1000),String(sw_totalPausedTime / 1000)};
-      sendToGas(sendData,5);
-      sw_pir_pause = false;
-      sw_startTime = 0;
-      sw_pauseTime = 0;
-      sw_startHMD = "";
-      sw_stopHMD = "";
-      sw_totalPausedTime =0;
-      sw_elapsedTime = 0;
+  if(button_press !=0){
+    if (button_press == 1) { // Single press
+      switch(sw_state) {
+        case STOPPED:
+          sw_state = RUNNING;
+          if(sw_startHMD == ""){
+            sw_startHMD = getTime();
+          };
+          sw_startTime = millis();
+          sw_totalPausedTime = 0;
+          sw_elapsedTime = 0;
+          sw_pauseTime = 0;
+          break;
+        case RUNNING:
+          sw_state = PAUSED;
+          sw_stopHMD = getTime();
+          sw_pauseTime = millis();
+          break;
+        case PAUSED:
+          sw_state = RUNNING;
+          sw_totalPausedTime += (millis() - sw_pauseTime);
+          sw_pauseTime = 0;
+          sw_pir_pause = false;
+          break;
+      }
       sw_needs_display_update = true;
-      sw_state = STOPPED;
     }
-    if(sw_state == STOPPED){
-      mode = "Menu";
-      sw_state = SETUP;
+
+    if (button_press == 4) { // Long press for reset
+      if(sw_state == PAUSED){
+        Serial.println("reset");
+        Serial.println(sw_startHMD);
+        Serial.println(sw_stopHMD);
+        String sendData[] = {"stopwatch",sw_startHMD,sw_stopHMD,String(sw_elapsedTime / 1000),String(sw_totalPausedTime / 1000)};
+        sendToGas(sendData,5);
+        sw_pir_pause = false;
+        sw_startTime = 0;
+        sw_pauseTime = 0;
+        sw_startHMD = "";
+        sw_stopHMD = "";
+        sw_totalPausedTime =0;
+        sw_elapsedTime = 0;
+        sw_needs_display_update = true;
+        sw_state = STOPPED;
+      }
+      if(sw_state == STOPPED){
+        mode = "Menu";
+        sw_state = SETUP;
+      }
     }
   }
 
