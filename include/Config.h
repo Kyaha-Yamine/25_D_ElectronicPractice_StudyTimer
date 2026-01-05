@@ -15,7 +15,7 @@
 #define LED_1 2
 
 // --- ファームウェアバージョン ---
-#define FIRMWARE_VERSION "v0.0.10"
+#define FIRMWARE_VERSION "v1.0.0"
 
 // --- GitHub設定 ---
 #define GITHUB_USER "Kyaha-Yamine"

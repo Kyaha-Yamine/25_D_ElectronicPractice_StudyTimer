@@ -204,9 +204,9 @@ void mode_settings_loop() {
 void mode_menu(){
   disp_clearMainScreen();
   disp_showTitle("Menu");
-  String menu_items[] = {"ストップウォッチ", "タイマー", "設定"};
-  String menu_items_mode[] = {"Stopwatch", "Timer", "Settings"};
-  mode = disp_listMenu(menu_items_mode, menu_items, 3, "MainMenu");
+  String menu_items[] = {"ストップウォッチ", "設定"};
+  String menu_items_mode[] = {"Stopwatch", "Settings"};
+  mode = disp_listMenu(menu_items_mode, menu_items, 2, "MainMenu");
 }
 
 void setup() 
