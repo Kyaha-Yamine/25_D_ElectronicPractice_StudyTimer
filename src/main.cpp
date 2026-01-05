@@ -35,7 +35,6 @@ QRCode qrcode;
 
 // 現在のファームウェアバージョン
 #define FIRMWARE_VERSION "v0.0.8"
-#define FIRMWARE_VERSION "v0.0.8"
 
 // --- 設定項目 ---
 #define GITHUB_USER "Kyaha-Yamine" // GitHubのユーザー名
