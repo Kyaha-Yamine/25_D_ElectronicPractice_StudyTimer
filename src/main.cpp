@@ -34,7 +34,7 @@ QRCode qrcode;
 // PinAssign SDO=19,SCK=18,SDI=23,DC=17,RST=16,CS=5
 
 // 現在のファームウェアバージョン
-#define FIRMWARE_VERSION "v0.0.7"
+#define FIRMWARE_VERSION "v0.0.8"
 
 // --- 設定項目 ---
 #define GITHUB_USER "Kyaha-Yamine" // GitHubのユーザー名
@@ -177,8 +177,8 @@ void disp_showTitle(String title ,int color = disp_def_txt_color){
   u8g2.print(title);
 }
 
-String footertext_showing;
 //footer 表示エリア x:0~320 y:223~309
+String footertext_showing;
 void disp_showfooter(String text, int color = disp_def_txt_color){
   if(footertext_showing == text){
     return;
@@ -214,7 +214,7 @@ void disp_showDateTime(){
 
 //mainscreen 削除エリア x:0~320 y:21~222
 void disp_clearMainScreen(){
-  tft.fillRect(0,21,320,201,disp_def_bg_color);
+  tft.fillRect(0,21,320,202,disp_def_bg_color);
 }
 
 //listmenu 表示エリア x:0~320 y:21~222 
@@ -645,7 +645,59 @@ void mode_stopwatch_loop(){
     sw_needs_display_update = false;
   }
 }
-  
+
+
+void mode_settings_loop() {
+  disp_clearMainScreen();
+  disp_showTitle("Settings");
+  String menu_items[] = {"戻る", "アップデート" ,"Wi-Fi設定","機器情報"};
+  String menu_items_mode[] = {"MainMenu", "Update", "Wifi", "Info"};
+  disp_showfooter("・決定 ");
+  mode = disp_listMenu(menu_items_mode, menu_items, 4, "Settings");
+  if (mode == "Update") {
+    checkForUpdates();
+  }
+  if (mode == "Wifi") {
+    setupwifi();
+  }
+  if (mode == "Info") {
+    disp_clearMainScreen();
+    disp_showTitle("Info");
+    disp_showfooter("・戻る");
+    tft.setTextSize(2);
+    //firmware
+    tft.setCursor(0, 20);
+    tft.println("Firmware Version:");
+    tft.println(FIRMWARE_VERSION);
+    tft.setCursor(0, 40);
+    //wifi
+    tft.println("Wi-Fi SSID:");
+    tft.println(WiFi.SSID());
+    tft.setCursor(0, 60);
+    tft.println("Wi-Fi IP:");
+    tft.println(WiFi.localIP());
+    tft.setCursor(0, 80);
+    tft.println("Wi-Fi RSSI:");
+    tft.println(WiFi.RSSI());
+    tft.setCursor(0, 100);
+    tft.println("Wi-Fi MAC:");
+    tft.println(WiFi.macAddress());
+    tft.setCursor(0, 120);
+    tft.println("Wi-Fi Channel:");
+    tft.println(WiFi.channel());
+
+    while (true) {
+      int button_press = checkButton();
+      if (button_press == 1) {
+        break;
+      }
+    }
+  }
+  if (mode == "MainMenu") {
+    mode = "Menu";
+  }
+}
+
 void checkForUpdates() {
   disp_showfooter("Checking for updates...");
   Serial.println("Checking for updates...");
@@ -835,9 +887,11 @@ void checkForUpdates() {
   httpDl.end();
 }
 
-String menu_items[] = {"ストップウォッチ", "タイマー", "設定"};
-String menu_items_mode[] = {"Stopwatch", "Timer", "Settings"};
 void mode_menu(){
+  disp_clearMainScreen();
+  disp_showTitle("Menu");
+  String menu_items[] = {"ストップウォッチ", "タイマー", "設定"};
+  String menu_items_mode[] = {"Stopwatch", "Timer", "Settings"};
   mode = disp_listMenu(menu_items_mode, menu_items, 3, "MainMenu");
 }
 
@@ -877,6 +931,11 @@ void loop() {
   }
   else if (mode == "Stopwatch"){
     mode_stopwatch_loop();
+  }else if (mode == "Timer"){
+    //mode_timer_loop();
+    mode = "Menu";
+  }else if (mode == "Settings"){
+    mode_settings_loop();
   }
   else{
     mode = "Menu";
