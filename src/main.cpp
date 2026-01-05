@@ -201,7 +201,6 @@ void mode_settings_loop() {
   }
 }
 
-
 void mode_menu(){
   disp_clearMainScreen();
   disp_showTitle("Menu");
