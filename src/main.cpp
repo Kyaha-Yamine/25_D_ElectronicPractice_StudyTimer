@@ -175,26 +175,23 @@ void mode_settings_loop() {
     tft.setCursor(0, 20);
     tft.println("Firmware Version:");
     tft.println(FIRMWARE_VERSION);
-    tft.setCursor(0, 40);
     //wifi
     tft.println("Wi-Fi SSID:");
     tft.println(WiFi.SSID());
-    tft.setCursor(0, 60);
     tft.println("Wi-Fi IP:");
     tft.println(WiFi.localIP());
-    tft.setCursor(0, 80);
-    tft.println("Wi-Fi RSSI:");
-    tft.println(WiFi.RSSI());
-    tft.setCursor(0, 100);
     tft.println("Wi-Fi MAC:");
     tft.println(WiFi.macAddress());
-    tft.setCursor(0, 120);
     tft.println("Wi-Fi Channel:");
     tft.println(WiFi.channel());
-
+    tft.println("Wi-Fi RSSI:");
+    tft.println(WiFi.RSSI());
+    tft.println("GAS URL:");
+    tft.println(GAS_URL);
     while (true) {
       int button_press = checkButton();
       if (button_press == 1) {
+        mode = "Settings";
         break;
       }
     }
@@ -253,9 +250,6 @@ void loop() {
     mode = "Menu";
   }else if (mode == "Settings"){
     mode_settings_loop();
-  }else if (mode == "Timer"){
-    //mode_timer_loop();
-    mode = "Menu";
   }else if (mode == "Settings"){
     mode_settings_loop();
   }
