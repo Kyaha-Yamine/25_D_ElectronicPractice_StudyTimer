@@ -840,7 +840,7 @@ void mode_stopwatch_loop(){
 void mode_settings_loop() {
   disp_clearMainScreen();
   disp_showTitle("Settings");
-  String menu_items[] = {"戻る", "アップデート" ,"Wi-Fi設定","機器情報"};
+  String menu_items[] = {"もどる", "アップデート" ,"Wi-Fi設定","機器情報"};
   String menu_items_mode[] = {"MainMenu", "Update", "Wifi", "Info"};
   disp_showfooter("・決定 ");
   mode = disp_listMenu(menu_items_mode, menu_items, 4, "Settings");
@@ -853,8 +853,8 @@ void mode_settings_loop() {
   if (mode == "Info") {
     disp_clearMainScreen();
     disp_showTitle("Info");
-    disp_showfooter("・戻る");
-    tft.setTextSize(2);
+    disp_showfooter("・もどる");
+    tft.setTextSize(1);
     //firmware
     tft.setCursor(0, 20);
     tft.println("Firmware Version:");
