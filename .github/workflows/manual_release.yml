@@ -1,0 +1,67 @@
+name: Manual Release Firmware
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (e.g., v1.0.0)'
+        required: true
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Update Firmware Version
+        run: |
+          sed -i 's/#define FIRMWARE_VERSION ".*"/#define FIRMWARE_VERSION "${{ github.event.inputs.version }}"/g' src/main.cpp
+          # Verify change
+          grep "FIRMWARE_VERSION" src/main.cpp
+
+      - name: Commit and Tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add src/main.cpp
+          git commit -m "Bump version to ${{ github.event.inputs.version }}"
+          git tag ${{ github.event.inputs.version }}
+          git push origin HEAD:main --tags
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Install PlatformIO and esptool
+        run: pip install platformio esptool
+
+      - name: Build PlatformIO Project
+        run: platformio run -e esp32dev
+
+      - name: Generate Factory Binary
+        run: |
+          # 隠れている boot_app0.bin を探してビルドフォルダにコピー
+          find ~/.platformio/packages/framework-arduinoespressif32 -name boot_app0.bin -exec cp {} .pio/build/esp32dev/boot_app0.bin \; -quit
+
+          # python -m esptool を使用して結合
+          python -m esptool --chip esp32 merge_bin -o .pio/build/esp32dev/factory.bin \
+            --flash_mode dio --flash_freq 40m --flash_size 4MB \
+            0x1000 .pio/build/esp32dev/bootloader.bin \
+            0x8000 .pio/build/esp32dev/partitions.bin \
+            0xe000 .pio/build/esp32dev/boot_app0.bin \
+            0x10000 .pio/build/esp32dev/firmware.bin
+
+      - name: Create Release and Upload Firmware
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.version }}
+          files: |
+            .pio/build/esp32dev/firmware.bin
+            .pio/build/esp32dev/bootloader.bin
+            .pio/build/esp32dev/partitions.bin
+            .pio/build/esp32dev/boot_app0.bin
+            .pio/build/esp32dev/factory.bin
