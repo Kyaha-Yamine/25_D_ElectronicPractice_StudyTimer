@@ -180,7 +180,6 @@ void disp_showTitle(String title ,int color = disp_def_txt_color){
 
 //footer 表示エリア x:0~320 y:223~309
 String footertext_showing;
-String footertext_showing;
 void disp_showfooter(String text, int color = disp_def_txt_color){
   if(footertext_showing == text){
     return;
