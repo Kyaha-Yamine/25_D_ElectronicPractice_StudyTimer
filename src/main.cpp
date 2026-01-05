@@ -35,6 +35,7 @@ QRCode qrcode;
 
 // 現在のファームウェアバージョン
 #define FIRMWARE_VERSION "v0.0.8"
+#define FIRMWARE_VERSION "v0.0.8"
 
 // --- 設定項目 ---
 #define GITHUB_USER "Kyaha-Yamine" // GitHubのユーザー名
@@ -179,6 +180,7 @@ void disp_showTitle(String title ,int color = disp_def_txt_color){
 
 //footer 表示エリア x:0~320 y:223~309
 String footertext_showing;
+String footertext_showing;
 void disp_showfooter(String text, int color = disp_def_txt_color){
   if(footertext_showing == text){
     return;
@@ -214,6 +216,7 @@ void disp_showDateTime(){
 
 //mainscreen 削除エリア x:0~320 y:21~222
 void disp_clearMainScreen(){
+  tft.fillRect(0,21,320,202,disp_def_bg_color);
   tft.fillRect(0,21,320,202,disp_def_bg_color);
 }
 
@@ -931,6 +934,11 @@ void loop() {
   }
   else if (mode == "Stopwatch"){
     mode_stopwatch_loop();
+  }else if (mode == "Timer"){
+    //mode_timer_loop();
+    mode = "Menu";
+  }else if (mode == "Settings"){
+    mode_settings_loop();
   }else if (mode == "Timer"){
     //mode_timer_loop();
     mode = "Menu";
