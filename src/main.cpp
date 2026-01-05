@@ -34,7 +34,7 @@ QRCode qrcode;
 // PinAssign SDO=19,SCK=18,SDI=23,DC=17,RST=16,CS=5
 
 // 現在のファームウェアバージョン
-#define FIRMWARE_VERSION "v0.0.8"
+#define FIRMWARE_VERSION "v0.0.9"
 
 // --- 設定項目 ---
 #define GITHUB_USER "Kyaha-Yamine" // GitHubのユーザー名
