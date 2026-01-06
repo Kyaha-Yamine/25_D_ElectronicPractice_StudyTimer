@@ -74,7 +74,6 @@ void disp_showDateTime(){
 
 void disp_clearMainScreen(){
   tft.fillRect(0,21,320,202,disp_def_bg_color);
-  // 重複していたので削除
 }
 
 String disp_listMenu(String menuItems_return[], String menuItems_disp[], int list_length, String title) {
@@ -91,7 +90,6 @@ String disp_listMenu(String menuItems_return[], String menuItems_disp[], int lis
   //loop
   while (1)
   {
-    ArduinoOTA.handle();
     if(needs_redraw){
       // listの描画
       for (int i = 0; i < list_length; i++) {
@@ -152,6 +150,62 @@ String disp_listMenu(String menuItems_return[], String menuItems_disp[], int lis
           show_start = selected - 9;
         } else if (selected < show_start) {
           show_start = selected;
+        }
+        needs_redraw = true;
+      }
+    }
+
+  return menuItems_return[selected];
+}
+
+String disp_yesno_form(String title, String message) {
+  //setup
+  disp_clearMainScreen();
+  disp_showTitle(title);
+  disp_showfooter("・決定");
+  tft.setTextSize(2);
+  int selected = 0;
+  int bg_highlight_color = ILI9341_WHITE;
+  int txt_highlight_color = ILI9341_BLACK;
+  bool needs_redraw = true;
+  String menuItems_disp[] = {"はい", "いいえ"};
+  String menuItems_return[] = {"yes", "no"};
+  //loop
+  while (1)
+  {
+    if(needs_redraw){
+      // listの描画
+      for (int i = 0; i < 2; i++) {
+          if (i == selected) {
+            tft.fillRect(0, 201 + i * 20, 320, 20, bg_highlight_color);
+            u8g2.setForegroundColor(txt_highlight_color);
+            u8g2.setBackgroundColor(bg_highlight_color);
+            tft.setTextColor(txt_highlight_color);
+          } else {
+            tft.fillRect(0, 201 + i * 20, 320, 20, disp_def_bg_color);
+            u8g2.setForegroundColor(disp_def_txt_color);
+            u8g2.setBackgroundColor(disp_def_bg_color);
+            tft.setTextColor(disp_def_txt_color);  
+          }
+          u8g2.setCursor(20, 201 + i * 20 +15);
+          u8g2.print(menuItems_disp[i]);
+      u8g2.setForegroundColor(disp_def_txt_color);
+      u8g2.setBackgroundColor(disp_def_bg_color);
+      tft.setTextColor(disp_def_txt_color);
+      needs_redraw = false;
+      }
+    }
+      int button_press = checkButton();
+      if (button_press != 0) {
+        if (button_press == 1) { // Single press
+          break;
+        }
+      }
+      int encoder_change = checkEncoder();
+      if (encoder_change != 0) {
+        selected += encoder_change;
+        if (selected < 0) {
+          selected = 0;
         }
         needs_redraw = true;
       }
